@@ -1,0 +1,31 @@
+import pandas as pd
+from binance.client import Client
+client = Client()
+
+
+# Get Data
+# coins = ('BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'LTCUSDT', 'BCHUSDT', 'LINKUSDT', 'MANAUSDT', 'DOGEUSDT', 'VETUSDT')
+
+# function to get data from binance api and convert it to readable data frame
+def get5mindata(symbol, lookback):
+    # grab data in data frame
+    frame = pd.DataFrame(client.get_historical_klines(symbol, '5m', lookback + ' days ago UTC'))
+    # get first 5 columns as those are the only ones we need
+    frame = frame.iloc[:, :6]
+    # rename columns
+    frame.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+    # turn values to floats
+    frame[['Open', 'High', 'Low', 'Close', 'Volume']] = frame[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+    # change from unix time to standard time system
+    frame.Date = pd.to_datetime(frame.Date, unit='ms')
+    # make index the first column which is Dates
+    frame.set_index('Date', inplace=True, drop=True)
+    return frame
+
+
+# call function to get BTC data in 5 minute intervals for the previous 5000 days
+df = get5mindata('BTCUSDT', '5000')
+
+# turn it to a csv 
+df.to_csv('BTCUSDT_5m.csv')
+print(df)
