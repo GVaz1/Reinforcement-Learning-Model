@@ -25,12 +25,20 @@ def get_score(data, fees=0.001):
     if ret == 0:
         ret = 0.001
 
-    pos_sum = data['Position'].sum()
+    pos_sum = data['Position'].sum() * 2
     if pos_sum == 0:
         pos_sum = 0.001
 
+    stdev = data['strat_returns'].std()
+    if stdev == 0:
+        stdev = -1
+
+    r_mean = data['strat_returns'].mean()
+    if r_mean == 0:
+        r_mean = -1
+
     # Optimization Score
-    data['score'] = ret * 100 / pos_sum
+    data['score'] = ((ret * 100 / pos_sum) + (r_mean/stdev))/2
 
     # filter to negatively reward strategies that took little trades or held on to a trade for a long time
     if (data['Entry'].sum()/len(data)) < 0.0012:
