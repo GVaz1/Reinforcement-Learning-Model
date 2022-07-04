@@ -1,0 +1,328 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Helper function to calculate returns and score of strategy
+def get_score(data, fees=0.001):
+    # make a column that equals the fee paid for entering and exiting trades when a trade is opened and closed
+    data['Entry'] = np.where(np.logical_and(data['Position'] == 1, data['Position'].shift(1) == 0),
+                             1, 0)
+    data['Exit'] = np.where(np.logical_and(data['Position'] == 0, data['Position'].shift(1) == 1),
+                            1, 0)
+    data['Entry_Fees'] = fees * data['Entry']
+    data['Exit_Fees'] = fees * data['Exit']
+
+    # get reutrns of the stock
+    data['returns'] = (data['Close'] / data['Close'].shift(1)) - 1
+
+    # get the returns of the strategy
+    data['strat_returns'] = (data['Position'].shift(1) * data['returns']) - data['Entry_Fees'] - data['Exit_Fees']
+    data['cum_strat_returns'] = data['strat_returns'].cumsum()
+
+    # avoid division by 0 error
+    ret = data['strat_returns'].sum()
+    if ret == 0:
+        ret = 0.001
+
+    pos_sum = data['Position'].sum()
+    if pos_sum == 0:
+        pos_sum = 0.001
+
+    # Optimization Score
+    data['score'] = ret * 100 / pos_sum
+
+    # filter to negatively reward strategies that took little trades or held on to a trade for a long time
+    if (data['Entry'].sum()/len(data)) < 0.0012:
+        data['score'] = -100
+
+    data['score'] = data['score'].ffill().fillna(-100)
+    score = data.iloc[0]['score']
+    return score
+
+
+# Strategy function
+def strategy(data, b1, f1, f2, f3, f4, s1,
+             buy_level, sell_level, deg_ma_len, vol_ma_len, vol_lookback, close_lookback, wick_perc_level):
+    buy = 1  # placeholder
+    sell = 1  # placeholder
+
+    # buy condition 1
+    if b1 == 1:
+        buy = np.logical_and(data['Degrees'] > buy_level, data['Degrees'].shift(1) < buy_level)
+    # buy condition 2
+    elif b1 == 0:
+        data['Degrees_MA'] = data['Degrees'].rolling(window=deg_ma_len).mean()
+        buy = np.logical_and(data['Degrees'] > data['Degrees_MA'],
+                             data['Degrees'].shift(1) < data['Degrees_MA'].shift(1))
+
+    # filter 1
+    if f1 == 1:
+        buy = np.logical_and(buy, data['Volume'] > data['Volume'].shift(vol_lookback))
+    # filter 2
+    elif f1 == 0:
+        buy = np.logical_and(buy, data['Volume'] < data['Volume'].shift(vol_lookback))
+
+    # filter 3
+    if f2 == 1:
+        data['Volume_MA'] = data['Volume'].rolling(window=vol_ma_len).mean()
+        buy = np.logical_and(buy, data['Volume'] > data['Volume_MA'])
+    # filter 4
+    elif f2 == 0:
+        data['Volume_MA'] = data['Volume'].rolling(window=vol_ma_len).mean()
+        buy = np.logical_and(buy, data['Volume'] < data['Volume_MA'])
+
+    # filter 5
+    if f3 == 1:
+        buy = np.logical_and(buy, data['Close'] > data['Close'].shift(close_lookback))
+    # filter 6
+    elif f3 == 0:
+        buy = np.logical_and(buy, data['Close'] < data['Close'].shift(close_lookback))
+
+    # filter 7
+    if f4 == 1:
+        data['Wick_Percent'] = np.where(data['Close'] >= data['Open'],
+                                        (data['High'] - data['Low']) /
+                                        ((data['High'] - data['Close']) + (data['Open'] - data['Low'])) * 100,
+                                        0)
+        data['Wick_Percent'] = np.where(data['Close'] < data['Open'],
+                                        (data['High'] - data['Low']) /
+                                        ((data['High'] - data['Open']) + (data['Close'] - data['Low'])) * 100,
+                                        data['Wick_Percent'])
+        buy = np.logical_and(buy, data['Wick_Percent'] > wick_perc_level)
+    # filter 8
+    elif f4 == 0:
+        data['Wick_Percent'] = np.where(data['Close'] >= data['Open'],
+                                        (data['High'] - data['Low']) /
+                                        ((data['High'] - data['Close']) + data['Open'] - data['Low']) * 100, 0)
+        data['Wick_Percent'] = np.where(data['Close'] < data['Open'],
+                                        (data['High'] - data['Low']) /
+                                        ((data['High'] - data['Open']) + data['Close'] - data['Low']) * 100,
+                                        data['Wick_Percent'])
+        buy = np.logical_and(buy, data['Wick_Percent'] < wick_perc_level)
+
+    # Sell condition 1
+    if s1 == 1:
+        sell = np.logical_and(data['Degrees'] > sell_level, data['Degrees'].shift(1) < sell_level)
+    # Sell condition 2
+    elif s1 == 0:
+        sell = np.logical_and(data['Degrees'] < sell_level, data['Degrees'].shift(1) > sell_level)
+
+    # run strategy
+    data['Position'] = np.nan
+    data['Position'] = np.where(buy, 1, data['Position'])
+    data['Position'] = np.where(sell, 0, data['Position'])
+    data['Position'] = data['Position'].ffill().fillna(0)
+    return data
+
+
+# function to optimize strategy with a reinforcement learning approach
+def optimize(data, fees=0.001, exploration_trials=100, generations_len=1):
+    # initial exploration
+    generation = pd.DataFrame()
+    for i in range(exploration_trials):
+        b1 = np.random.randint(low=0, high=2)
+        f1 = np.random.randint(low=0, high=3)
+        f2 = np.random.randint(low=0, high=3)
+        f3 = np.random.randint(low=0, high=3)
+        f4 = np.random.randint(low=0, high=3)
+        s1 = np.random.randint(low=0, high=2)
+        buy_level = np.random.randint(low=-80, high=81)
+        sell_level = np.random.randint(low=-80, high=81)
+        deg_ma_len = np.random.randint(low=2, high=201)
+        vol_ma_len = np.random.randint(low=2, high=201)
+        vol_lookback = np.random.randint(low=1, high=20)
+        close_lookback = np.random.randint(low=1, high=20)
+        wick_perc_level = np.random.randint(low=5, high=96)
+        in_df = data.copy()
+        in_df = strategy(in_df, b1=b1, f1=f1, f2=f2, f3=f3, f4=f4, s1=s1,
+                         buy_level=buy_level, sell_level=sell_level, deg_ma_len=deg_ma_len, vol_ma_len=vol_ma_len,
+                         vol_lookback=vol_lookback, close_lookback=close_lookback, wick_perc_level=wick_perc_level)
+        score = get_score(in_df, fees=fees)
+        parameters = []
+        parameters.extend([b1, f1, f2, f3, f4, s1, buy_level, sell_level,
+                           deg_ma_len, vol_ma_len, vol_lookback, close_lookback, wick_perc_level, score])
+        opt1 = 'Opt. ' + str(i + 1)
+        generation[opt1] = parameters
+    print('Exploration Results:', '\n', generation.T.to_string())
+    # Drop worst 50% of strategies based off score
+    generation = generation.T
+    generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[13]).index)
+
+    # modify survivors and kill worst 50%
+    for i in range(generations_len):
+        new_generation = pd.DataFrame()
+        for b in range(round(exploration_trials / 2)):
+            param = np.random.randint(low=0, high=13)
+            b1 = generation.iloc[b][0]
+            f1 = generation.iloc[b][1]
+            f2 = generation.iloc[b][2]
+            f3 = generation.iloc[b][3]
+            f4 = generation.iloc[b][4]
+            s1 = generation.iloc[b][5]
+            buy_level = generation.iloc[b][6]
+            sell_level = generation.iloc[b][7]
+            deg_ma_len = generation.iloc[b][8]
+            vol_ma_len = generation.iloc[b][9]
+            vol_lookback = generation.iloc[b][10]
+            close_lookback = generation.iloc[b][11]
+            wick_perc_level = generation.iloc[b][12]
+
+            while 1 == 1:
+                if param == 0:
+                    b1 = np.random.randint(low=0, high=2)
+                    break
+                elif param == 1:
+                    f1 = np.random.randint(low=0, high=3)
+                    break
+                elif param == 2:
+                    f2 = np.random.randint(low=0, high=3)
+                    break
+                elif param == 3:
+                    f3 = np.random.randint(low=0, high=3)
+                    break
+                elif param == 4:
+                    f4 = np.random.randint(low=0, high=3)
+                    break
+                elif param == 5:
+                    s1 = np.random.randint(low=0, high=2)
+                    break
+                elif param == 6 and b1 == 1:
+                    buy_level = np.random.randint(low=-80, high=81)
+                    break
+                elif param == 7:
+                    sell_level = np.random.randint(low=-80, high=81)
+                    break
+                elif param == 7 and b1 == 0:
+                    deg_ma_len = np.random.randint(low=2, high=201)
+                    break
+                elif param == 9:
+                    vol_ma_len = np.random.randint(low=2, high=201)
+                    break
+                elif param == 10:
+                    vol_lookback = np.random.randint(low=1, high=20)
+                    break
+                elif param == 11:
+                    close_lookback = np.random.randint(low=1, high=20)
+                    break
+                elif param == 12:
+                    wick_perc_level = np.random.randint(low=5, high=96)
+                    break
+                param = np.random.randint(low=0, high=13)
+
+            in_df = data.copy()
+            in_df = strategy(in_df, b1=b1, f1=f1, f2=f2, f3=f3, f4=f4, s1=s1,
+                             buy_level=buy_level, sell_level=sell_level, deg_ma_len=round(deg_ma_len),
+                             vol_ma_len=round(vol_ma_len), vol_lookback=round(vol_lookback),
+                             close_lookback=round(close_lookback), wick_perc_level=round(wick_perc_level))
+            score = get_score(in_df, fees=fees)
+            parameters = []
+            parameters.extend([b1, f1, f2, f3, f4, s1, buy_level, sell_level,
+                               deg_ma_len, vol_ma_len, vol_lookback, close_lookback, wick_perc_level, score])
+
+            opt1 = 'Opt. ' + str(i + 1) + str(b + 1) + str(i + 1) + str(b + 1) + str(b)
+            new_generation[opt1] = parameters
+
+        new_generation = new_generation.T
+        generation = pd.concat([generation, new_generation])
+        print('\n', 'Generation:', str(i + 1), '\n', generation.to_string())
+
+        # kill bottom 50%
+        generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[13]).index)
+
+    # kill all but best traders
+    generation = generation.drop(generation.nsmallest((round(exploration_trials / 2)) - 1, columns=[13]).index)
+    return generation
+
+
+# __GET-DATA__
+df = pd.read_csv('BTCUSDT_5m.csv')
+
+# __Format-Data__
+df.reset_index(drop=True, inplace=True)
+# Change Date column to a date time type
+df.Date = pd.to_datetime(df.Date, format='%Y-%m-%d %H:%M:%S.%f')
+# Change Date column to the index of the data frame
+df.set_index('Date', inplace=True, drop=True)
+
+# __CALCULATE-SLOPE__
+# get slope with a window of 10 previous values
+df['Slope'] = (((df['Close'] - df['Close'].shift(9)) / df['Close']) * 100) / 10
+# turn slope to radians and radians to degrees
+df['Degrees'] = np.degrees(np.arctan(df['Slope']))
+
+# __SPLIT-DATA__
+# first 70% of data for training, last 30% of data for testing
+training_df = df.iloc[0:round(len(df.index) * 0.7), ].copy()  # cuts dataframe from start to 70%
+testing_df = df.iloc[round(len(df.index) * 0.7):len(df.index), ].copy()  # cuts dataframe from 70% to end
+
+# __GET-RESULTS__
+c = optimize(training_df, fees=0.001, exploration_trials=100, generations_len=5)
+np.set_printoptions(suppress=True)  # suppress scientific notation
+print('\n', 'Best Parameters:', '\n', c.to_string())
+
+# __RUN-RESULTS__
+# training data
+training_df = strategy(training_df, b1=c.iloc[0][0], f1=c.iloc[0][1], f2=c.iloc[0][2], f3=c.iloc[0][3], f4=c.iloc[0][4],
+                       s1=c.iloc[0][5],
+                       buy_level=round(c.iloc[0][6]), sell_level=round(c.iloc[0][7]), deg_ma_len=round(c.iloc[0][8]),
+                       vol_ma_len=round(c.iloc[0][9]), vol_lookback=round(c.iloc[0][10]),
+                       close_lookback=round(c.iloc[0][11]),
+                       wick_perc_level=round(c.iloc[0][12]))
+z = get_score(training_df, fees=0.001)
+
+# testing data
+testing_df = strategy(testing_df, b1=c.iloc[0][0], f1=c.iloc[0][1], f2=c.iloc[0][2], f3=c.iloc[0][3], f4=c.iloc[0][4],
+                      s1=c.iloc[0][5],
+                      buy_level=round(c.iloc[0][6]), sell_level=round(c.iloc[0][7]), deg_ma_len=round(c.iloc[0][8]),
+                      vol_ma_len=round(c.iloc[0][9]), vol_lookback=round(c.iloc[0][10]),
+                      close_lookback=round(c.iloc[0][11]),
+                      wick_perc_level=round(c.iloc[0][12]))
+v = get_score(testing_df, fees=0.001)
+
+
+# measure similarity of the training and test scores by getting the percent that z is of v
+h = z * z
+h2 = v * v
+
+similarity = h / np.sqrt(h*h2)
+print('\nTraining Score:', z, '\nTesting Score:', v)
+print('Testing and Training Score Similarity:', similarity*100)
+
+# Plot Data
+fig, ax = plt.subplots(2, figsize=(15, 7), sharex=True, sharey=False)
+
+long_entry = training_df.loc[(training_df['Position'] == 1) & (training_df['Position'].shift(1) == 0)]['Close']
+long_exit = training_df.loc[(training_df['Position'] == 0) & (training_df['Position'].shift(1) == 1)]['Close']
+long_entry2 = testing_df.loc[(testing_df['Position'] == 1) & (testing_df['Position'].shift(1) == 0)]['Close']
+long_exit2 = testing_df.loc[(testing_df['Position'] == 0) & (testing_df['Position'].shift(1) == 1)]['Close']
+
+ax[0].scatter(long_entry.index, long_entry, c='mediumorchid',
+              s=100, marker='^', label='Long Entry',
+              zorder=10)
+ax[0].scatter(long_exit.index, long_exit, c='mediumorchid',
+              s=100, marker='x', label='Long Exit',
+              zorder=10)
+
+ax[0].scatter(long_entry2.index, long_entry2, c='mediumorchid',
+              s=100, marker='^',
+              zorder=10)
+ax[0].scatter(long_exit2.index, long_exit2, c='mediumorchid',
+              s=100, marker='x',
+              zorder=10)
+ax[0].plot(df['Close'], color='black', label='Closing Price')
+ax[0].set_title('Total Data')
+ax[0].legend()
+
+
+ax[1].plot(training_df['cum_strat_returns']*100, label='Training Returns')
+ax[1].plot(((df['Close'] / df['Close'].shift(1)) - 1).cumsum()*100, color='orange', label='Buy and Hold Returns')
+ax[1].plot((training_df.iloc[len(training_df)-1]['cum_strat_returns'] + testing_df['cum_strat_returns'])*100,
+           label='Testing Returns')
+
+
+ax[1].set_ylabel('Returns (%)')
+ax[1].set_title('Equity Charts')
+ax[1].legend()
+
+plt.show()
