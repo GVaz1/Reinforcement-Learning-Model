@@ -1,0 +1,1017 @@
+import pandas as pd
+import pandas_ta as pa
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# reward function
+# Helper function to calculate returns and score of strategy
+def get_score(data, fees=0.001):
+    # make a column that equals the fee paid for entering and exiting trades when a trade is opened and closed
+    data['Entry'] = np.where(np.logical_and(data['Position'] == 1, data['Position'].shift(1) == 0),
+                             1, 0)
+    data['Exit'] = np.where(np.logical_and(data['Position'] == 0, data['Position'].shift(1) == 1),
+                            1, 0)
+    data['Entry_Fees'] = fees * data['Entry']
+    data['Exit_Fees'] = fees * data['Exit']
+
+    # get reutrns of the stock
+    data['returns'] = (data['Close'] / data['Close'].shift(1)) - 1
+
+    # get the returns of the strategy
+    data['strat_returns'] = (data['Position'].shift(1) * data['returns']) - data['Entry_Fees'] - data['Exit_Fees']
+    data['cum_strat_returns'] = data['strat_returns'].cumsum()
+
+    # Max Drawdown
+    cum_returns = data['strat_returns'].cumsum() - 1
+    peak = cum_returns.cummax()
+    drawdown = peak - cum_returns
+    data['max_drawdown'] = drawdown.max()
+
+    # Optimization Score
+    data['score'] = data['strat_returns'].sum() / data['max_drawdown']
+
+    if (data['Exit'].sum() / len(data)) > 0.00009901676:
+        data['score'] = -100
+
+    data['score'] = data['score'].ffill().fillna(-100)
+    score = data.iloc[0]['score']
+    return score
+
+
+def intelligence(data, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc, body_wick_perc,
+                 ema1_len,
+                 ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len, ema1_slope_level, close_lookback,
+                 rsi_len, rsi_level, rsi_ma_len, vol_ma_len, cmf_len, cmf_level, cmf_ma_len):
+    cmf_ma_len = int(cmf_ma_len)
+    ema1_len = int(ema1_len)
+    ema2_len = int(ema2_len)
+    ema1_slope_len = int(ema1_slope_len)
+    rsi_len = int(rsi_len)
+    rsi_ma_len = int(rsi_ma_len)
+    vol_ma_len = int(vol_ma_len)
+    close_lookback = int(close_lookback)
+    ema1_cross_delay = int(ema1_cross_delay)
+    ema2_cross_delay = int(ema2_cross_delay)
+    cmf_len = int(cmf_len)
+    ema1_slope_level = int(ema1_slope_level)
+    rsi_level = int(rsi_level)
+    cmf_level = int(cmf_level)
+
+    buy = 0 < 1  # placeholder
+
+    '''__Price_Action__'''
+    # p1: candle patterns, 0 = skip, 0 to 3
+    # top wick % is > < x
+    if (top_wick_perc + bot_wick_perc + body_wick_perc) > 100:
+        remainder = 100 - top_wick_perc
+        body_wick_perc = remainder / 2
+        bot_wick_perc = remainder / 2
+
+    if p1 != 0:
+        data['Top_Wick_Percent'] = np.where(data['Close'] >= data['Open'],
+                                            ((data['High'] - data['Close']) / (data['High'] - data['Low'])) * 100,
+                                            0)
+        data['Top_Wick_Percent'] = np.where(data['Close'] < data['Open'],
+                                            ((data['High'] - data['Open']) / (data['High'] - data['Low'])) * 100,
+                                            data['Top_Wick_Percent'])
+        if p1 == 1:
+            buy = np.logical_and(buy, data['Top_Wick_Percent'] > top_wick_perc)
+        elif p1 == 2:
+            buy = np.logical_and(buy, data['Top_Wick_Percent'] < top_wick_perc)
+        elif p1 == 3:
+            lower_bound = top_wick_perc - (top_wick_perc * 0.05)
+            upper_bound = top_wick_perc + (top_wick_perc * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['Top_Wick_Percent'] > lower_bound,
+                                                     data['Top_Wick_Percent'] < upper_bound))
+    # p2 bottom pattern
+    if p2 != 0:
+        data['Bot_Wick_Percent'] = np.where(data['Close'] >= data['Open'],
+                                            ((data['Open'] - data['Low']) / (data['High'] - data['Low'])) * 100,
+                                            0)
+        data['Bot_Wick_Percent'] = np.where(data['Close'] < data['Open'],
+                                            ((data['Close'] - data['Low']) / (data['High'] - data['Low'])) * 100,
+                                            data['Bot_Wick_Percent'])
+        if p1 == 1:
+            buy = np.logical_and(buy, data['Bot_Wick_Percent'] > bot_wick_perc)
+        elif p1 == 2:
+            buy = np.logical_and(buy, data['Bot_Wick_Percent'] < bot_wick_perc)
+        elif p1 == 3:
+            lower_bound = bot_wick_perc - (bot_wick_perc * 0.05)
+            upper_bound = bot_wick_perc + (bot_wick_perc * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['Bot_Wick_Percent'] > lower_bound,
+                                                     data['Bot_Wick_Percent'] < upper_bound))
+
+    # p3 bottom pattern
+    if p3 != 0:
+        data['Body_Wick_Percent'] = np.where(data['Close'] >= data['Open'],
+                                             ((data['Close'] - data['Open']) / (data['High'] - data['Low'])) * 100,
+                                             0)
+        data['Body_Wick_Percent'] = np.where(data['Close'] < data['Open'],
+                                             ((data['Open'] - data['Close']) / (data['High'] - data['Low'])) * 100,
+                                             data['Body_Wick_Percent'])
+        if p1 == 1:
+            buy = np.logical_and(buy, data['Body_Wick_Percent'] > body_wick_perc)
+        elif p1 == 2:
+            buy = np.logical_and(buy, data['Body_Wick_Percent'] < body_wick_perc)
+        elif p1 == 3:
+            lower_bound = body_wick_perc - (body_wick_perc * 0.05)
+            upper_bound = body_wick_perc + (body_wick_perc * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['Body_Wick_Percent'] > lower_bound,
+                                                     data['Body_Wick_Percent'] < upper_bound))
+
+    # EMA and Close Crossover/Crossunder
+    if p4 != 0:
+        data['EMA1'] = data['Close'].rolling(window=ema1_len).mean()
+        # crossover
+        if p4 == 1:
+            buy = np.logical_and(buy, np.logical_and(data['Close'] > data['EMA1'],
+                                                     data['Close'].shift(1) < data['EMA1'].shift(1)))
+        # crossunder
+        if p4 == 2:
+            buy = np.logical_and(buy, np.logical_and(data['Close'] < data['EMA1'],
+                                                     data['Close'].shift(1) > data['EMA1'].shift(1)))
+        # crossover + delay
+        if p4 == 3:
+            buy = np.logical_and(buy, np.logical_and(data['Close'].shift(ema1_cross_delay) >
+                                                     data['EMA1'].shift(ema1_cross_delay),
+                                                     data['Close'].shift(ema1_cross_delay + 1) <
+                                                     data['EMA1'].shift(ema1_cross_delay + 1)))
+        # crossunder + delay
+        if p4 == 4:
+            buy = np.logical_and(buy, np.logical_and(data['Close'].shift(ema1_cross_delay) <
+                                                     data['EMA1'].shift(ema1_cross_delay),
+                                                     data['Close'].shift(ema1_cross_delay + 1) >
+                                                     data['EMA1'].shift(ema1_cross_delay + 1)))
+    # EMA1 and EMA2 Crossover/Crossunder
+    if p5 != 0:
+        data['EMA1'] = data['Close'].rolling(window=ema1_len).mean()
+        data['EMA2'] = data['Close'].rolling(window=ema2_len).mean()
+        # crossover
+        if p5 == 1:
+            buy = np.logical_and(buy, np.logical_and(data['EMA1'] > data['EMA2'],
+                                                     data['EMA1'].shift(1) < data['EMA2'].shift(1)))
+        # crossunder
+        if p5 == 2:
+            buy = np.logical_and(buy, np.logical_and(data['EMA1'] < data['EMA2'],
+                                                     data['EMA1'].shift(1) > data['EMA2'].shift(1)))
+
+        # crossover + delay
+        if p5 == 3:
+            buy = np.logical_and(buy, np.logical_and(data['EMA1'].shift(ema2_cross_delay) >
+                                                     data['EMA2'].shift(ema2_cross_delay),
+                                                     data['EMA1'].shift(ema2_cross_delay + 1) <
+                                                     data['EMA2'].shift(ema2_cross_delay + 1)))
+        # crossunder + delay
+        if p5 == 4:
+            buy = np.logical_and(buy, np.logical_and(data['EMA1'].shift(ema2_cross_delay) <
+                                                     data['EMA2'].shift(ema2_cross_delay),
+                                                     data['EMA1'].shift(ema2_cross_delay + 1) >
+                                                     data['EMA2'].shift(ema2_cross_delay + 1)))
+    # EMA1 slope
+    if p6 != 0:
+        data['EMA1'] = data['Close'].rolling(window=ema1_len).mean()
+        # get slope with a window of 10 previous values
+        data['Slope'] = (((data['EMA1'] - data['EMA1'].shift(ema1_slope_len)) / data['EMA1']) * 100) / (
+                ema1_slope_len + 1)
+        # turn slope to radians and radians to degrees
+        data['Degrees'] = np.degrees(np.arctan(data['Slope']))
+        if p6 == 1:
+            buy = np.logical_and(buy, data['Degrees'] > ema1_slope_level)
+        if p6 == 2:
+            buy = np.logical_and(buy, data['Degrees'] < ema1_slope_level)
+        if p6 == 3:
+            upper_bound = ema1_slope_level + (ema1_slope_level * 0.05)
+            lower_bound = ema1_slope_level - (ema1_slope_level * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['Degrees'] < upper_bound, data['Degrees'] > lower_bound))
+
+    # close > < close.shift(x)
+    if p7 == 1:
+        buy = np.logical_and(buy, data['Close'] > data['Close'].shift(close_lookback))
+    if p7 == 2:
+        buy = np.logical_and(buy, data['Close'] < data['Close'].shift(close_lookback))
+    if p7 == 3:
+        upper_bound = data['Close'].shift(close_lookback) + (data['Close'].shift(close_lookback) * 0.05)
+        lower_bound = data['Close'].shift(close_lookback) - (data['Close'].shift(close_lookback) * 0.05)
+        buy = np.logical_and(buy, np.logical_and(data['Close'] > lower_bound, data['Close'] < upper_bound))
+
+    if p8 != 0:
+        data['RSI'] = pa.rsi(close=data['Close'], length=rsi_len)
+        data['RSI_MA'] = data['RSI'].rolling(window=rsi_ma_len).mean()
+
+        # > rsi_level
+        if p8 == 1:
+            buy = np.logical_and(buy, data['RSI'] > rsi_level)
+        # < rsi_level
+        if p8 == 2:
+            buy = np.logical_and(buy, data['RSI'] < rsi_level)
+        # crossover rsi_level
+        if p8 == 3:
+            buy = np.logical_and(buy, np.logical_and(data['RSI'] > rsi_level, data['RSI'].shift(1) < rsi_level))
+        # crossunder rsi_level
+        if p8 == 4:
+            buy = np.logical_and(buy, np.logical_and(data['RSI'] < rsi_level, data['RSI'].shift(1) > rsi_level))
+        # rsi == rsi_level + %err
+        if p8 == 5:
+            upper_bound = rsi_level + (rsi_level * 0.05)
+            lower_bound = rsi_level - (rsi_level * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['RSI'] < upper_bound, data['RSI'] > lower_bound))
+        # rsi above average
+        if p8 == 6:
+            buy = np.logical_and(buy, data['RSI'] > data['RSI_MA'])
+        # rsi below average
+        if p8 == 7:
+            buy = np.logical_and(buy, data['RSI'] < data['RSI_MA'])
+
+    # volume and volume ma
+    if p9 != 0:
+        data['Volume_MA'] = data['Volume'].rolling(window=vol_ma_len).mean()
+        if p9 == 1:
+            buy = np.logical_and(buy, np.logical_and(data['Volume'] > data['Volume_MA'],
+                                                     data['Volume'].shift(1) < data['Volume_MA'].shift(1)))
+        if p9 == 2:
+            buy = np.logical_and(buy, np.logical_and(data['Volume'] < data['Volume_MA'],
+                                                     data['Volume'].shift(1) > data['Volume_MA'].shift(1)))
+        if p9 == 3:
+            upper_bound = data['Volume_MA'] + (data['Volume_MA'] * 0.05)
+            lower_bound = data['Volume_MA'] - (data['Volume_MA'] * 0.05)
+            buy = np.logical_and(buy, np.logical_and(data['Volume'] < upper_bound, data['Volume'] > lower_bound))
+
+    # cmf oscillator, bounds = 1, -1
+    if p10 != 0:
+        data['CMF'] = pa.cmf(high=data['High'], low=data['Low'], close=data['Close'], volume=data['Volume'],
+                             open=data['Open'], length=cmf_len)
+        data['CMF_MA'] = data['CMF'].rolling(window=cmf_ma_len).mean()
+    if p10 == 1:
+        buy = np.logical_and(buy, data['CMF'] > cmf_level)
+    if p10 == 2:
+        buy = np.logical_and(buy, data['CMF'] < cmf_level)
+    if p10 == 3:
+        buy = np.logical_and(buy, np.logical_and(data['CMF'] > cmf_level, data['CMF'].shift(1) < cmf_level))
+    if p10 == 4:
+        buy = np.logical_and(buy, np.logical_and(data['CMF'] < cmf_level, data['CMF'].shift(1) > cmf_level))
+    if p10 == 5:
+        upper_bound = cmf_level + (cmf_level * 0.05)
+        lower_bound = cmf_level - (cmf_level * 0.05)
+        buy = np.logical_and(buy, np.logical_and(data['CMF'] < upper_bound, data['CMF'] > lower_bound))
+    if p10 == 6:
+        buy = np.logical_and(buy, data['CMF'] > data['CMF_MA'])
+    if p10 == 7:
+        buy = np.logical_and(buy, data['CMF'] < data['CMF_MA'])
+
+    # vwap
+    if p11 != 0:
+        data['VWAP'] = pa.vwap(high=data['High'], low=data['Low'], close=data['Close'], volume=data['Volume'])
+        if p11 == 1:
+            buy = np.logical_and(buy, data['Close'] > data['VWAP'])
+        if p11 == 2:
+            buy = np.logical_and(buy, data['Close'] < data['VWAP'])
+        if p11 == 3:
+            buy = np.logical_and(buy, np.logical_and(data['Close'] > data['VWAP'],
+                                                     data['Close'].shift(1) < data['VWAP'].shift(1)))
+        if p11 == 4:
+            buy = np.logical_and(buy, np.logical_and(data['Close'] < data['VWAP'],
+                                                     data['Close'].shift(1) > data['VWAP'].shift(1)))
+
+    return buy
+
+
+# ____________Make different function for  buy and sell signals
+# Strategy function
+def strategy(data, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc, body_wick_perc, ema1_len,
+             ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len, ema1_slope_level, close_lookback, rsi_len,
+             rsi_level, rsi_ma_len, vol_ma_len, cmf_len, cmf_level, cmf_ma_len,
+             e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, top_wick_perc_e, bot_wick_perc_e, body_wick_perc_e,
+             ema1_len_e, ema1_cross_delay_e, ema2_len_e, ema2_cross_delay_e, ema1_slope_len_e, ema1_slope_level_e,
+             close_lookback_e, rsi_len_e, rsi_level_e, rsi_ma_len_e, vol_ma_len_e, cmf_len_e, cmf_level_e, cmf_ma_len_e
+             ):
+    buy = intelligence(data=data, p1=p1, p2=p2, p3=p3, p4=p4, p5=p5, p6=p6, p7=p7, p8=p8, p9=p9, p10=p10, p11=p11,
+                       top_wick_perc=top_wick_perc, bot_wick_perc=bot_wick_perc, body_wick_perc=body_wick_perc,
+                       ema1_len=ema1_len, ema1_cross_delay=ema1_cross_delay, ema2_len=ema2_len,
+                       ema2_cross_delay=ema2_cross_delay, ema1_slope_len=ema1_slope_len,
+                       ema1_slope_level=ema1_slope_level, close_lookback=close_lookback, cmf_len=cmf_len,
+                       cmf_level=cmf_level, cmf_ma_len=cmf_ma_len, rsi_len=rsi_len, rsi_level=rsi_level,
+                       rsi_ma_len=rsi_ma_len, vol_ma_len=vol_ma_len)
+    sell = intelligence(data=data, p1=e1, p2=e2, p3=e3, p4=e4, p5=e5, p6=e6, p7=e7, p8=e8, p9=e9, p10=e10, p11=e11,
+                        top_wick_perc=top_wick_perc_e, bot_wick_perc=bot_wick_perc_e, body_wick_perc=body_wick_perc_e,
+                        ema1_len=ema1_len_e, ema1_cross_delay=ema1_cross_delay_e, ema2_len=ema2_len_e,
+                        ema2_cross_delay=ema2_cross_delay_e, ema1_slope_len=ema1_slope_len_e,
+                        ema1_slope_level=ema1_slope_level_e, close_lookback=close_lookback_e,
+                        rsi_len=rsi_len_e, rsi_level=rsi_level_e, rsi_ma_len=rsi_ma_len_e, vol_ma_len=vol_ma_len_e,
+                        cmf_len=cmf_len_e, cmf_level=cmf_level_e, cmf_ma_len=cmf_ma_len_e)
+
+    # run strategy
+    data['Position'] = np.nan
+    data['Position'] = np.where(buy, 1, data['Position'])
+    data['Position'] = np.where(sell, 0, data['Position'])
+    data['Position'] = data['Position'].ffill().fillna(0)
+    return data
+
+
+# function to optimize strategy with a reinforcement learning approach
+def optimize(data, fees=0.001, exploration_trials=100, generations_len=1):
+    # initial exploration
+    generation = pd.DataFrame()
+    for i in range(exploration_trials):
+        p1 = np.random.randint(low=0, high=4)
+        p2 = np.random.randint(low=0, high=4)
+        p3 = np.random.randint(low=0, high=4)
+        p4 = np.random.randint(low=0, high=5)
+        p5 = np.random.randint(low=0, high=5)
+        p6 = np.random.randint(low=0, high=4)
+        p7 = np.random.randint(low=0, high=4)
+        p8 = np.random.randint(low=0, high=8)
+        p9 = np.random.randint(low=0, high=4)
+        p10 = np.random.randint(low=0, high=8)
+        p11 = np.random.randint(low=0, high=5)
+        top_wick_perc = np.random.randint(low=0, high=101)
+        bot_wick_perc = np.random.randint(low=0, high=101)
+        body_wick_perc = np.random.randint(low=0, high=101)
+        ema1_len = np.random.randint(low=2, high=301)
+        ema1_cross_delay = np.random.randint(low=0, high=50)
+        ema2_len = np.random.randint(low=2, high=301)
+        ema2_cross_delay = np.random.randint(low=0, high=50)
+        ema1_slope_len = np.random.randint(low=2, high=301)
+        ema1_slope_level = np.random.randint(low=-80, high=81)
+        close_lookback = np.random.randint(low=0, high=50)
+        rsi_len = np.random.randint(low=2, high=301)
+        rsi_level = np.random.randint(low=1, high=100)
+        rsi_ma_len = np.random.randint(low=2, high=301)
+        vol_ma_len = np.random.randint(low=2, high=301)
+        cmf_len = np.random.randint(low=2, high=301)
+        cmf_level = np.random.randint(low=-8, high=8) / 8
+        cmf_ma_len = np.random.randint(low=2, high=301)
+        e1 = np.random.randint(low=0, high=4)
+        e2 = np.random.randint(low=0, high=4)
+        e3 = np.random.randint(low=0, high=4)
+        e4 = np.random.randint(low=0, high=5)
+        e5 = np.random.randint(low=0, high=5)
+        e6 = np.random.randint(low=0, high=4)
+        e7 = np.random.randint(low=0, high=4)
+        e8 = np.random.randint(low=0, high=8)
+        e9 = np.random.randint(low=0, high=4)
+        e10 = np.random.randint(low=0, high=8)
+        e11 = np.random.randint(low=0, high=5)
+        top_wick_perc_e = np.random.randint(low=0, high=101)
+        bot_wick_perc_e = np.random.randint(low=0, high=101)
+        body_wick_perc_e = np.random.randint(low=0, high=101)
+        ema1_len_e = np.random.randint(low=2, high=301)
+        ema1_cross_delay_e = np.random.randint(low=0, high=50)
+        ema2_len_e = np.random.randint(low=2, high=301)
+        ema2_cross_delay_e = np.random.randint(low=0, high=50)
+        ema1_slope_len_e = np.random.randint(low=2, high=301)
+        ema1_slope_level_e = np.random.randint(low=-80, high=81)
+        close_lookback_e = np.random.randint(low=0, high=50)
+        rsi_len_e = np.random.randint(low=2, high=301)
+        rsi_level_e = np.random.randint(low=1, high=100)
+        rsi_ma_len_e = np.random.randint(low=2, high=301)
+        vol_ma_len_e = np.random.randint(low=2, high=301)
+        cmf_len_e = np.random.randint(low=2, high=301)
+        cmf_level_e = np.random.randint(low=-8, high=8) / 8
+        cmf_ma_len_e = np.random.randint(low=2, high=301)
+        in_df = data.copy()
+        in_df = strategy(data=data, p1=p1, p2=p2, p3=p3, p4=p4, p5=p5, p6=p6, p7=p7, p8=p8, p9=p9, p10=p10, p11=p11,
+                         top_wick_perc=top_wick_perc, bot_wick_perc=bot_wick_perc, body_wick_perc=body_wick_perc,
+                         ema1_len=ema1_len, ema1_cross_delay=ema1_cross_delay, ema2_len=ema2_len, cmf_ma_len=cmf_ma_len,
+                         ema2_cross_delay=ema2_cross_delay, ema1_slope_len=ema1_slope_len, cmf_len=cmf_len,
+                         ema1_slope_level=ema1_slope_level, close_lookback=close_lookback, cmf_level=cmf_level,
+                         rsi_len=rsi_len, rsi_level=rsi_level, rsi_ma_len=rsi_ma_len, vol_ma_len=vol_ma_len,
+                         e1=e1, e2=e2, e3=e3, e4=e4, e5=e5, e6=e6, e7=e7, e8=e8, e9=e9, e10=e10, e11=e11,
+                         top_wick_perc_e=top_wick_perc_e, bot_wick_perc_e=bot_wick_perc_e, cmf_len_e=cmf_len_e,
+                         body_wick_perc_e=body_wick_perc_e, ema1_len_e=ema1_len_e, cmf_level_e=cmf_level_e,
+                         ema1_cross_delay_e=ema1_cross_delay_e, ema2_len_e=ema2_len_e, cmf_ma_len_e=cmf_ma_len_e,
+                         ema2_cross_delay_e=ema2_cross_delay_e, ema1_slope_len_e=ema1_slope_len_e,
+                         ema1_slope_level_e=ema1_slope_level_e, close_lookback_e=close_lookback_e,
+                         rsi_len_e=rsi_len_e, rsi_level_e=rsi_level_e, rsi_ma_len_e=rsi_ma_len_e,
+                         vol_ma_len_e=vol_ma_len_e)
+        score = get_score(in_df, fees=fees)
+        parameters = []
+        parameters.extend([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc, body_wick_perc,
+                           ema1_len, ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len, ema1_slope_level,
+                           close_lookback, rsi_len, rsi_level, rsi_ma_len, vol_ma_len, cmf_len, cmf_level, cmf_ma_len,
+                           e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, top_wick_perc_e, bot_wick_perc_e,
+                           body_wick_perc_e, ema1_len_e, ema1_cross_delay_e, ema2_len_e, ema2_cross_delay_e,
+                           ema1_slope_len_e, ema1_slope_level_e, close_lookback_e, rsi_len_e, rsi_level_e, rsi_ma_len_e,
+                           vol_ma_len_e, cmf_len_e, cmf_level_e, cmf_ma_len_e, score])
+        opt1 = 'Opt. ' + str(i + 1)
+        generation[opt1] = parameters
+    print('Exploration Results:', '\n', generation.T)
+    # Drop worst 50% of strategies based off score
+    generation = generation.T
+    generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[56]).index)
+
+    # modify survivors and kill worst 50%
+    for i in range(generations_len):
+        new_generation = pd.DataFrame()
+        for b in range(len(generation)):
+            p1 = generation.iloc[b][0]
+            p2 = generation.iloc[b][1]
+            p3 = generation.iloc[b][2]
+            p4 = generation.iloc[b][3]
+            p5 = generation.iloc[b][4]
+            p6 = generation.iloc[b][5]
+            p7 = generation.iloc[b][6]
+            p8 = generation.iloc[b][7]
+            p9 = generation.iloc[b][8]
+            p10 = generation.iloc[b][9]
+            p11 = generation.iloc[b][10]
+            top_wick_perc = generation.iloc[b][11]
+            bot_wick_perc = generation.iloc[b][12]
+            body_wick_perc = generation.iloc[b][13]
+            ema1_len = generation.iloc[b][14]
+            ema1_cross_delay = generation.iloc[b][15]
+            ema2_len = generation.iloc[b][16]
+            ema2_cross_delay = generation.iloc[b][17]
+            ema1_slope_len = generation.iloc[b][18]
+            ema1_slope_level = generation.iloc[b][19]
+            close_lookback = generation.iloc[b][20]
+            rsi_len = generation.iloc[b][21]
+            rsi_level = generation.iloc[b][22]
+            rsi_ma_len = generation.iloc[b][23]
+            vol_ma_len = generation.iloc[b][24]
+            cmf_len = generation.iloc[b][25]
+            cmf_level = generation.iloc[b][26]
+            cmf_ma_len = generation.iloc[b][27]
+            e1 = generation.iloc[b][28]
+            e2 = generation.iloc[b][29]
+            e3 = generation.iloc[b][30]
+            e4 = generation.iloc[b][31]
+            e5 = generation.iloc[b][32]
+            e6 = generation.iloc[b][33]
+            e7 = generation.iloc[b][34]
+            e8 = generation.iloc[b][35]
+            e9 = generation.iloc[b][36]
+            e10 = generation.iloc[b][37]
+            e11 = generation.iloc[b][38]
+            top_wick_perc_e = generation.iloc[b][39]
+            bot_wick_perc_e = generation.iloc[b][40]
+            body_wick_perc_e = generation.iloc[b][41]
+            ema1_len_e = generation.iloc[b][42]
+            ema1_cross_delay_e = generation.iloc[b][43]
+            ema2_len_e = generation.iloc[b][44]
+            ema2_cross_delay_e = generation.iloc[b][45]
+            ema1_slope_len_e = generation.iloc[b][46]
+            ema1_slope_level_e = generation.iloc[b][47]
+            close_lookback_e = generation.iloc[b][48]
+            rsi_len_e = generation.iloc[b][49]
+            rsi_level_e = generation.iloc[b][50]
+            rsi_ma_len_e = generation.iloc[b][51]
+            vol_ma_len_e = generation.iloc[b][52]
+            cmf_len_e = generation.iloc[b][53]
+            cmf_level_e = generation.iloc[b][54]
+            cmf_ma_len_e = generation.iloc[b][55]
+
+            pool = []
+            for j in range(56):
+                pool.append(1 + j)
+
+            new_parameters = np.random.randint(low=1, high=25)
+            for x in range(new_parameters):
+                param = pool.pop(np.random.randint(low=0, high=len(pool)))
+                if param == 1:
+                    p1 = np.random.randint(low=0, high=4)
+                elif param == 2:
+                    p2 = np.random.randint(low=0, high=4)
+                elif param == 3:
+                    p3 = np.random.randint(low=0, high=4)
+                elif param == 4:
+                    p4 = np.random.randint(low=0, high=5)
+                elif param == 5:
+                    p5 = np.random.randint(low=0, high=5)
+                elif param == 6:
+                    p6 = np.random.randint(low=0, high=4)
+                elif param == 7:
+                    p7 = np.random.randint(low=0, high=4)
+                elif param == 8:
+                    p8 = np.random.randint(low=0, high=8)
+                elif param == 9:
+                    p9 = np.random.randint(low=0, high=4)
+                elif param == 10:
+                    p10 = np.random.randint(low=0, high=8)
+                elif param == 11:
+                    p11 = np.random.randint(low=0, high=5)
+                elif param == 12:
+                    top_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 13:
+                    bot_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 14:
+                    body_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 15:
+                    ema1_len = np.random.randint(low=2, high=301)
+                elif param == 16:
+                    ema1_cross_delay = np.random.randint(low=0, high=50)
+                elif param == 17:
+                    ema2_len = np.random.randint(low=2, high=301)
+                elif param == 18:
+                    ema2_cross_delay = np.random.randint(low=0, high=50)
+                elif param == 19:
+                    ema1_slope_len = np.random.randint(low=2, high=301)
+                elif param == 20:
+                    ema1_slope_level = np.random.randint(low=-80, high=81)
+                elif param == 21:
+                    close_lookback = np.random.randint(low=0, high=50)
+                elif param == 22:
+                    rsi_len = np.random.randint(low=2, high=301)
+                elif param == 23:
+                    rsi_level = np.random.randint(low=1, high=100)
+                elif param == 24:
+                    rsi_ma_len = np.random.randint(low=2, high=301)
+                elif param == 25:
+                    vol_ma_len = np.random.randint(low=2, high=301)
+                elif param == 26:
+                    cmf_len = np.random.randint(low=2, high=301)
+                elif param == 27:
+                    cmf_level = np.random.randint(low=-8, high=8) / 8
+                elif param == 28:
+                    cmf_ma_len = np.random.randint(low=2, high=301)
+                elif param == 29:
+                    e1 = np.random.randint(low=0, high=4)
+                elif param == 30:
+                    e2 = np.random.randint(low=0, high=4)
+                elif param == 31:
+                    e3 = np.random.randint(low=0, high=4)
+                elif param == 32:
+                    e4 = np.random.randint(low=0, high=5)
+                elif param == 33:
+                    e5 = np.random.randint(low=0, high=5)
+                elif param == 34:
+                    e6 = np.random.randint(low=0, high=4)
+                elif param == 35:
+                    e7 = np.random.randint(low=0, high=4)
+                elif param == 36:
+                    e8 = np.random.randint(low=0, high=8)
+                elif param == 37:
+                    e9 = np.random.randint(low=0, high=4)
+                elif param == 38:
+                    e10 = np.random.randint(low=0, high=8)
+                elif param == 39:
+                    e11 = np.random.randint(low=0, high=5)
+                elif param == 40:
+                    top_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 41:
+                    bot_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 42:
+                    body_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 43:
+                    ema1_len_e = np.random.randint(low=2, high=301)
+                elif param == 44:
+                    ema1_cross_delay_e = np.random.randint(low=0, high=50)
+                elif param == 45:
+                    ema2_len_e = np.random.randint(low=2, high=301)
+                elif param == 46:
+                    ema2_cross_delay_e = np.random.randint(low=0, high=50)
+                elif param == 47:
+                    ema1_slope_len_e = np.random.randint(low=2, high=301)
+                elif param == 48:
+                    ema1_slope_level_e = np.random.randint(low=-80, high=81)
+                elif param == 49:
+                    close_lookback_e = np.random.randint(low=0, high=50)
+                elif param == 50:
+                    rsi_len_e = np.random.randint(low=2, high=301)
+                elif param == 51:
+                    rsi_level_e = np.random.randint(low=1, high=100)
+                elif param == 52:
+                    rsi_ma_len_e = np.random.randint(low=2, high=301)
+                elif param == 53:
+                    vol_ma_len_e = np.random.randint(low=2, high=301)
+                elif param == 54:
+                    cmf_len_e = np.random.randint(low=2, high=301)
+                elif param == 55:
+                    cmf_level_e = np.random.randint(low=-8, high=8) / 8
+                elif param == 56:
+                    cmf_ma_len_e = np.random.randint(low=2, high=301)
+
+            in_df = data.copy()
+            in_df = strategy(data=data, p1=p1, p2=p2, p3=p3, p4=p4, p5=p5, p6=p6, p7=p7, p8=p8, p9=p9, p10=p10, p11=p11,
+                             top_wick_perc=top_wick_perc, bot_wick_perc=bot_wick_perc, body_wick_perc=body_wick_perc,
+                             ema1_len=ema1_len, ema1_cross_delay=ema1_cross_delay, ema2_len=ema2_len,
+                             ema2_cross_delay=ema2_cross_delay, ema1_slope_len=ema1_slope_len,
+                             ema1_slope_level=ema1_slope_level, close_lookback=close_lookback,
+                             rsi_len=rsi_len, rsi_level=rsi_level, rsi_ma_len=rsi_ma_len, vol_ma_len=vol_ma_len,
+                             cmf_len=cmf_len, cmf_level=cmf_level, cmf_ma_len=cmf_ma_len,
+                             e1=e1, e2=e2, e3=e3, e4=e4, e5=e5, e6=e6, e7=e7, e8=e8, e9=e9, e10=e10, e11=e11,
+                             top_wick_perc_e=top_wick_perc_e,
+                             bot_wick_perc_e=bot_wick_perc_e, body_wick_perc_e=body_wick_perc_e, ema1_len_e=ema1_len_e,
+                             ema1_cross_delay_e=ema1_cross_delay_e, ema2_len_e=ema2_len_e,
+                             ema2_cross_delay_e=ema2_cross_delay_e, ema1_slope_len_e=ema1_slope_len_e,
+                             ema1_slope_level_e=ema1_slope_level_e, close_lookback_e=close_lookback_e,
+                             rsi_len_e=rsi_len_e, rsi_level_e=rsi_level_e, rsi_ma_len_e=rsi_ma_len_e,
+                             vol_ma_len_e=vol_ma_len_e, cmf_len_e=cmf_len_e, cmf_level_e=cmf_level_e,
+                             cmf_ma_len_e=cmf_ma_len_e)
+            score = get_score(in_df, fees=fees)
+
+            parameters = []
+            parameters.extend([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc,
+                               body_wick_perc, ema1_len, ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len,
+                               ema1_slope_level, close_lookback, rsi_len, rsi_level, rsi_ma_len, vol_ma_len, cmf_len,
+                               cmf_level, cmf_ma_len, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, top_wick_perc_e,
+                               bot_wick_perc_e, body_wick_perc_e, ema1_len_e, ema1_cross_delay_e, ema2_len_e,
+                               ema2_cross_delay_e, ema1_slope_len_e, ema1_slope_level_e, close_lookback_e, rsi_len_e,
+                               rsi_level_e, rsi_ma_len_e, vol_ma_len_e, cmf_len_e, cmf_level_e, cmf_ma_len_e, score])
+            opt1 = 'Opt. ' + str(i + 1) + str(b + 1) + str(i + 1) + str(b)
+            new_generation[opt1] = parameters
+        new_generation = new_generation.T
+        generation = pd.concat([generation, new_generation])
+        print('\n', 'Generation:', str(i + 1), '\n', generation.to_string())
+
+        # kill bottom 50%
+        generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[56]).index)
+
+        # kill all but best traders
+    generation = generation.drop(generation.nsmallest((round(exploration_trials / 2)) - 1, columns=[56]).index)
+    return generation
+
+
+def parameter_optimization(data, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10,
+                           e11, fees=0.001, exploration_trials=100, generations_len=1, wfa=True):
+    # initial exploration
+    generation = pd.DataFrame()
+    for i in range(exploration_trials):
+        top_wick_perc = np.random.randint(low=0, high=101)
+        bot_wick_perc = np.random.randint(low=0, high=101)
+        body_wick_perc = np.random.randint(low=0, high=101)
+        ema1_len = np.random.randint(low=2, high=301)
+        ema1_cross_delay = np.random.randint(low=0, high=50)
+        ema2_len = np.random.randint(low=2, high=301)
+        ema2_cross_delay = np.random.randint(low=0, high=50)
+        ema1_slope_len = np.random.randint(low=2, high=301)
+        ema1_slope_level = np.random.randint(low=-80, high=81)
+        close_lookback = np.random.randint(low=0, high=50)
+        rsi_len = np.random.randint(low=2, high=301)
+        rsi_level = np.random.randint(low=1, high=100)
+        rsi_ma_len = np.random.randint(low=2, high=301)
+        vol_ma_len = np.random.randint(low=2, high=301)
+        cmf_len = np.random.randint(low=2, high=301)
+        cmf_level = np.random.randint(low=-8, high=8) / 8
+        cmf_ma_len = np.random.randint(low=2, high=301)
+        top_wick_perc_e = np.random.randint(low=0, high=101)
+        bot_wick_perc_e = np.random.randint(low=0, high=101)
+        body_wick_perc_e = np.random.randint(low=0, high=101)
+        ema1_len_e = np.random.randint(low=2, high=301)
+        ema1_cross_delay_e = np.random.randint(low=0, high=50)
+        ema2_len_e = np.random.randint(low=2, high=301)
+        ema2_cross_delay_e = np.random.randint(low=0, high=50)
+        ema1_slope_len_e = np.random.randint(low=2, high=301)
+        ema1_slope_level_e = np.random.randint(low=-80, high=81)
+        close_lookback_e = np.random.randint(low=0, high=50)
+        rsi_len_e = np.random.randint(low=2, high=301)
+        rsi_level_e = np.random.randint(low=1, high=100)
+        rsi_ma_len_e = np.random.randint(low=2, high=301)
+        vol_ma_len_e = np.random.randint(low=2, high=301)
+        cmf_len_e = np.random.randint(low=2, high=301)
+        cmf_level_e = np.random.randint(low=-8, high=8) / 8
+        cmf_ma_len_e = np.random.randint(low=2, high=301)
+        in_df = data.copy()
+        in_df = strategy(data=data, p1=p1, p2=p2, p3=p3, p4=p4, p5=p5, p6=p6, p7=p7, p8=p8, p9=p9, p10=p10, p11=p11,
+                         top_wick_perc=top_wick_perc, bot_wick_perc=bot_wick_perc, body_wick_perc=body_wick_perc,
+                         ema1_len=ema1_len, ema1_cross_delay=ema1_cross_delay, ema2_len=ema2_len, cmf_ma_len=cmf_ma_len,
+                         ema2_cross_delay=ema2_cross_delay, ema1_slope_len=ema1_slope_len, cmf_len=cmf_len,
+                         ema1_slope_level=ema1_slope_level, close_lookback=close_lookback, cmf_level=cmf_level,
+                         rsi_len=rsi_len, rsi_level=rsi_level, rsi_ma_len=rsi_ma_len, vol_ma_len=vol_ma_len,
+                         e1=e1, e2=e2, e3=e3, e4=e4, e5=e5, e6=e6, e7=e7, e8=e8, e9=e9, e10=e10, e11=e11,
+                         top_wick_perc_e=top_wick_perc_e, bot_wick_perc_e=bot_wick_perc_e, cmf_len_e=cmf_len_e,
+                         body_wick_perc_e=body_wick_perc_e, ema1_len_e=ema1_len_e, cmf_level_e=cmf_level_e,
+                         ema1_cross_delay_e=ema1_cross_delay_e, ema2_len_e=ema2_len_e, cmf_ma_len_e=cmf_ma_len_e,
+                         ema2_cross_delay_e=ema2_cross_delay_e, ema1_slope_len_e=ema1_slope_len_e,
+                         ema1_slope_level_e=ema1_slope_level_e, close_lookback_e=close_lookback_e,
+                         rsi_len_e=rsi_len_e, rsi_level_e=rsi_level_e, rsi_ma_len_e=rsi_ma_len_e,
+                         vol_ma_len_e=vol_ma_len_e)
+        score = get_score(in_df, fees=fees)
+        parameters = []
+        parameters.extend([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc, body_wick_perc,
+                           ema1_len, ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len, ema1_slope_level,
+                           close_lookback, rsi_len, rsi_level, rsi_ma_len, vol_ma_len, cmf_len, cmf_level, cmf_ma_len,
+                           e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, top_wick_perc_e, bot_wick_perc_e,
+                           body_wick_perc_e, ema1_len_e, ema1_cross_delay_e, ema2_len_e, ema2_cross_delay_e,
+                           ema1_slope_len_e, ema1_slope_level_e, close_lookback_e, rsi_len_e, rsi_level_e, rsi_ma_len_e,
+                           vol_ma_len_e, cmf_len_e, cmf_level_e, cmf_ma_len_e, score])
+        opt1 = 'Opt. ' + str(i + 1)
+        if wfa:
+            opt1 = 'WFA Opt.' + str(i + 1)
+        generation[opt1] = parameters
+    print('Exploration Results:', '\n', generation.T)
+    # Drop worst 50% of strategies based off score
+    generation = generation.T
+    generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[56]).index)
+
+    # modify survivors and kill worst 50%
+    for i in range(generations_len):
+        new_generation = pd.DataFrame()
+        for b in range(len(generation)):
+            top_wick_perc = generation.iloc[b][11]
+            bot_wick_perc = generation.iloc[b][12]
+            body_wick_perc = generation.iloc[b][13]
+            ema1_len = generation.iloc[b][14]
+            ema1_cross_delay = generation.iloc[b][15]
+            ema2_len = generation.iloc[b][16]
+            ema2_cross_delay = generation.iloc[b][17]
+            ema1_slope_len = generation.iloc[b][18]
+            ema1_slope_level = generation.iloc[b][19]
+            close_lookback = generation.iloc[b][20]
+            rsi_len = generation.iloc[b][21]
+            rsi_level = generation.iloc[b][22]
+            rsi_ma_len = generation.iloc[b][23]
+            vol_ma_len = generation.iloc[b][24]
+            cmf_len = generation.iloc[b][25]
+            cmf_level = generation.iloc[b][26]
+            cmf_ma_len = generation.iloc[b][27]
+            top_wick_perc_e = generation.iloc[b][39]
+            bot_wick_perc_e = generation.iloc[b][40]
+            body_wick_perc_e = generation.iloc[b][41]
+            ema1_len_e = generation.iloc[b][42]
+            ema1_cross_delay_e = generation.iloc[b][43]
+            ema2_len_e = generation.iloc[b][44]
+            ema2_cross_delay_e = generation.iloc[b][45]
+            ema1_slope_len_e = generation.iloc[b][46]
+            ema1_slope_level_e = generation.iloc[b][47]
+            close_lookback_e = generation.iloc[b][48]
+            rsi_len_e = generation.iloc[b][49]
+            rsi_level_e = generation.iloc[b][50]
+            rsi_ma_len_e = generation.iloc[b][51]
+            vol_ma_len_e = generation.iloc[b][52]
+            cmf_len_e = generation.iloc[b][53]
+            cmf_level_e = generation.iloc[b][54]
+            cmf_ma_len_e = generation.iloc[b][55]
+
+            pool = []
+            for j in range(56):
+                pool.append(1 + j)
+
+            new_parameters = np.random.randint(low=1, high=28)
+            for x in range(new_parameters):
+                param = pool.pop(np.random.randint(low=0, high=len(pool)))
+                if param == 12:
+                    top_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 13:
+                    bot_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 14:
+                    body_wick_perc = np.random.randint(low=0, high=101)
+                elif param == 15:
+                    ema1_len = np.random.randint(low=2, high=301)
+                elif param == 16:
+                    ema1_cross_delay = np.random.randint(low=0, high=50)
+                elif param == 17:
+                    ema2_len = np.random.randint(low=2, high=301)
+                elif param == 18:
+                    ema2_cross_delay = np.random.randint(low=0, high=50)
+                elif param == 19:
+                    ema1_slope_len = np.random.randint(low=2, high=301)
+                elif param == 20:
+                    ema1_slope_level = np.random.randint(low=-80, high=81)
+                elif param == 21:
+                    close_lookback = np.random.randint(low=0, high=50)
+                elif param == 22:
+                    rsi_len = np.random.randint(low=2, high=301)
+                elif param == 23:
+                    rsi_level = np.random.randint(low=1, high=100)
+                elif param == 24:
+                    rsi_ma_len = np.random.randint(low=2, high=301)
+                elif param == 25:
+                    vol_ma_len = np.random.randint(low=2, high=301)
+                elif param == 26:
+                    cmf_len = np.random.randint(low=2, high=301)
+                elif param == 27:
+                    cmf_level = np.random.randint(low=-8, high=8) / 8
+                elif param == 28:
+                    cmf_ma_len = np.random.randint(low=2, high=301)
+                elif param == 40:
+                    top_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 41:
+                    bot_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 42:
+                    body_wick_perc_e = np.random.randint(low=0, high=101)
+                elif param == 43:
+                    ema1_len_e = np.random.randint(low=2, high=301)
+                elif param == 44:
+                    ema1_cross_delay_e = np.random.randint(low=0, high=50)
+                elif param == 45:
+                    ema2_len_e = np.random.randint(low=2, high=301)
+                elif param == 46:
+                    ema2_cross_delay_e = np.random.randint(low=0, high=50)
+                elif param == 47:
+                    ema1_slope_len_e = np.random.randint(low=2, high=301)
+                elif param == 48:
+                    ema1_slope_level_e = np.random.randint(low=-80, high=81)
+                elif param == 49:
+                    close_lookback_e = np.random.randint(low=0, high=50)
+                elif param == 50:
+                    rsi_len_e = np.random.randint(low=2, high=301)
+                elif param == 51:
+                    rsi_level_e = np.random.randint(low=1, high=100)
+                elif param == 52:
+                    rsi_ma_len_e = np.random.randint(low=2, high=301)
+                elif param == 53:
+                    vol_ma_len_e = np.random.randint(low=2, high=301)
+                elif param == 54:
+                    cmf_len_e = np.random.randint(low=2, high=301)
+                elif param == 55:
+                    cmf_level_e = np.random.randint(low=-8, high=8) / 8
+                elif param == 56:
+                    cmf_ma_len_e = np.random.randint(low=2, high=301)
+            in_df = data.copy()
+            in_df = strategy(data=data, p1=p1, p2=p2, p3=p3, p4=p4, p5=p5, p6=p6, p7=p7, p8=p8, p9=p9, p10=p10, p11=p11,
+                             top_wick_perc=top_wick_perc, bot_wick_perc=bot_wick_perc, body_wick_perc=body_wick_perc,
+                             ema1_len=ema1_len, ema1_cross_delay=ema1_cross_delay, ema2_len=ema2_len,
+                             ema2_cross_delay=ema2_cross_delay, ema1_slope_len=ema1_slope_len,
+                             ema1_slope_level=ema1_slope_level, close_lookback=close_lookback,
+                             rsi_len=rsi_len, rsi_level=rsi_level, rsi_ma_len=rsi_ma_len, vol_ma_len=vol_ma_len,
+                             cmf_len=cmf_len, cmf_level=cmf_level, cmf_ma_len=cmf_ma_len,
+                             e1=e1, e2=e2, e3=e3, e4=e4, e5=e5, e6=e6, e7=e7, e8=e8, e9=e9, e10=e10, e11=e11,
+                             top_wick_perc_e=top_wick_perc_e,
+                             bot_wick_perc_e=bot_wick_perc_e, body_wick_perc_e=body_wick_perc_e, ema1_len_e=ema1_len_e,
+                             ema1_cross_delay_e=ema1_cross_delay_e, ema2_len_e=ema2_len_e,
+                             ema2_cross_delay_e=ema2_cross_delay_e, ema1_slope_len_e=ema1_slope_len_e,
+                             ema1_slope_level_e=ema1_slope_level_e, close_lookback_e=close_lookback_e,
+                             rsi_len_e=rsi_len_e, rsi_level_e=rsi_level_e, rsi_ma_len_e=rsi_ma_len_e,
+                             vol_ma_len_e=vol_ma_len_e, cmf_len_e=cmf_len_e, cmf_level_e=cmf_level_e,
+                             cmf_ma_len_e=cmf_ma_len_e)
+            score = get_score(in_df, fees=fees)
+            parameters = []
+            parameters.extend([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, top_wick_perc, bot_wick_perc,
+                               body_wick_perc, ema1_len, ema1_cross_delay, ema2_len, ema2_cross_delay, ema1_slope_len,
+                               ema1_slope_level, close_lookback, rsi_len, rsi_level, rsi_ma_len, vol_ma_len, cmf_len,
+                               cmf_level, cmf_ma_len, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, top_wick_perc_e,
+                               bot_wick_perc_e, body_wick_perc_e, ema1_len_e, ema1_cross_delay_e, ema2_len_e,
+                               ema2_cross_delay_e, ema1_slope_len_e, ema1_slope_level_e, close_lookback_e, rsi_len_e,
+                               rsi_level_e, rsi_ma_len_e, vol_ma_len_e, cmf_len_e, cmf_level_e, cmf_ma_len_e, score])
+            opt1 = 'Opt. ' + str(i + 1) + str(b + 1) + str(i + 1) + str(b)
+            if wfa:
+                opt1 = 'WFA Opt.' + str(i + 1) + str(b + 1) + str(i + 1) + str(b)
+            new_generation[opt1] = parameters
+        new_generation = new_generation.T
+        generation = pd.concat([generation, new_generation])
+        print('\n', 'Generation:', str(i + 1), '\n', generation.to_string())
+
+        # kill bottom 50%
+        generation = generation.drop(generation.nsmallest(round(exploration_trials / 2), columns=[56]).index)
+
+        # kill all but best traders
+    generation = generation.drop(generation.nsmallest((round(exploration_trials / 2)) - 1, columns=[56]).index)
+    return generation
+
+
+def cross_validate(data, c, exploration_trials, generations_len, fees):
+    # split data for walk forward analysis approach
+
+    training_1 = data.iloc[0:round(len(data) * 0.3684210526315789)].copy()
+    testing_1 = data.iloc[round(len(data) * 0.3684210526315789): round(len(data) * 0.5263157894736842)].copy()
+
+    training_2 = data.iloc[round(len(data) * 0.1578947368421053): round(len(data) * 0.5263157894736842)].copy()
+    testing_2 = data.iloc[round(len(data) * 0.5263157894736842): round(len(data) * 0.6842105263157895)].copy()
+
+    training_3 = data.iloc[round(len(data) * 0.315789473684211):round(len(data) * 0.6842105263157895)].copy()
+    testing_3 = data.iloc[round(len(data) * 0.6842105263157895):round(len(data) * 0.842105263157895)].copy()
+
+    training_4 = data.iloc[round(len(data) * 0.5263157894736842):round(len(data) * 0.842105263157895)].copy()
+    testing_4 = data.iloc[round(len(data) * 0.842105263157895):len(data)].copy()
+
+    constant_1 = c.iloc[0][0]
+    constant_2 = c.iloc[0][1]
+    constant_3 = c.iloc[0][2]
+    constant_4 = c.iloc[0][3]
+    constant_5 = c.iloc[0][4]
+    constant_6 = c.iloc[0][5]
+    constant_7 = c.iloc[0][6]
+    constant_8 = c.iloc[0][7]
+    constant_9 = c.iloc[0][8]
+    constant_10 = c.iloc[0][9]
+    constant_11 = c.iloc[0][10]
+
+    constant_12 = c.iloc[0][28]
+    constant_13 = c.iloc[0][29]
+    constant_14 = c.iloc[0][30]
+    constant_15 = c.iloc[0][31]
+    constant_16 = c.iloc[0][32]
+    constant_17 = c.iloc[0][33]
+    constant_18 = c.iloc[0][34]
+    constant_19 = c.iloc[0][35]
+    constant_20 = c.iloc[0][36]
+    constant_21 = c.iloc[0][37]
+    constant_22 = c.iloc[0][38]
+
+    for i in range(4):
+        if i == 0:
+            training = training_1
+            testing = testing_1
+        if i == 1:
+            training = training_2
+            testing = testing_2
+        if i == 2:
+            training = training_3
+            testing = testing_3
+        if i == 3:
+            training = training_4
+            testing = testing_4
+
+        r = parameter_optimization(data=training, p1=constant_1, p2=constant_2, p3=constant_3, p4=constant_4,
+                                   p5=constant_5, p6=constant_6, p7=constant_7, p8=constant_8, p9=constant_9,
+                                   p10=constant_10, p11=constant_11, e1=constant_12, e2=constant_13, e3=constant_14,
+                                   e4=constant_15, e5=constant_16, e6=constant_17, e7=constant_18, e8=constant_19,
+                                   e9=constant_20, e10=constant_21, e11=constant_22,
+                                   exploration_trials=exploration_trials, generations_len=generations_len,
+                                   wfa=True, fees=fees)
+        print(r.to_string())
+        in_df = data.copy()
+        in_df = strategy(data=testing, p1=constant_1, p2=constant_2, p3=constant_3, p4=constant_4,
+                         p5=constant_5, p6=constant_6, p7=constant_7, p8=constant_8, p9=constant_9,
+                         p10=constant_10, p11=constant_11,
+                         top_wick_perc=r.iloc[0][11], bot_wick_perc=r.iloc[0][12], body_wick_perc=r.iloc[0][13],
+                         ema1_len=r.iloc[0][14], ema1_cross_delay=r.iloc[0][15], ema2_len=r.iloc[0][16],
+                         cmf_ma_len=r.iloc[0][27],
+                         ema2_cross_delay=r.iloc[0][17], ema1_slope_len=r.iloc[0][18], cmf_len=r.iloc[0][25],
+                         ema1_slope_level=r.iloc[0][19], close_lookback=r.iloc[0][20], cmf_level=r.iloc[0][26],
+                         rsi_len=r.iloc[0][21], rsi_level=r.iloc[0][22], rsi_ma_len=r.iloc[0][23],
+                         vol_ma_len=r.iloc[0][24],
+                         e1=constant_12, e2=constant_13, e3=constant_14,
+                         e4=constant_15, e5=constant_16, e6=constant_17, e7=constant_18, e8=constant_19,
+                         e9=constant_20, e10=constant_21, e11=constant_22,
+                         top_wick_perc_e=r.iloc[0][39], bot_wick_perc_e=r.iloc[0][40], cmf_len_e=r.iloc[0][53],
+                         body_wick_perc_e=r.iloc[0][41], ema1_len_e=r.iloc[0][42], cmf_level_e=r.iloc[0][54],
+                         ema1_cross_delay_e=r.iloc[0][43], ema2_len_e=r.iloc[0][44], cmf_ma_len_e=r.iloc[0][55],
+                         ema2_cross_delay_e=r.iloc[0][45], ema1_slope_len_e=r.iloc[0][46],
+                         ema1_slope_level_e=r.iloc[0][47], close_lookback_e=r.iloc[0][48],
+                         rsi_len_e=r.iloc[0][49], rsi_level_e=r.iloc[0][50], rsi_ma_len_e=r.iloc[0][51],
+                         vol_ma_len_e=r.iloc[0][52])
+        testing['Benchmark'] = ((data['Close'] / data['Close'].shift(1)) - 1)
+        testing['Benchmark'] = in_df['Benchmark'].sum()
+        in_df['Strat._Ret.'] = (data['Position'].shift(1) * data['returns']) - data['Entry_Fees'] - data['Exit_Fees']
+        in_df['Strat._Ret.'] = in_df['Strat._Ret.'].sum()
+
+        if in_df.loc[in_df.index[len(in_df) - 1], 'Strat._Ret.'] < testing.loc[testing.index[len(testing) - 1],
+                                                                               'Benchmark']:
+            return False
+
+    return True
+
+
+def find_strategy(data, exploration_trials, generations_len, fees=0.001):
+    while 0 < 1:
+        # __SPLIT-DATA__
+        # first 70% of data for training, last 30% of data for testing
+        training_df = data.iloc[0:round(len(data.index) * 0.7), ].copy()  # cuts dataframe from start to 70%
+        testing_df = data.iloc[round(len(data.index) * 0.7):len(data.index), ].copy()  # cuts dataframe from 70% to end
+
+        # __GET-INITIAL-RESULTS__
+        c = optimize(training_df, fees=fees, exploration_trials=exploration_trials, generations_len=generations_len)
+        print('\n', 'Best Initial Parameters:', '\n', c.to_string())
+
+        # __CROSS-VALIDATE__
+        cv = cross_validate(data=training_df, c=c, exploration_trials=exploration_trials,
+                            generations_len=generations_len, fees=fees)
+        if cv:
+            break
+
+    while 0 < 1:
+        r = parameter_optimization(data=training_df, p1=c.iloc[0][0], p2=c.iloc[0][1], p3=c.iloc[0][2], p4=c.iloc[0][3],
+                                   p5=c.iloc[0][4], p6=c.iloc[0][5], p7=c.iloc[0][6], p8=c.iloc[0][7], p9=c.iloc[0][8],
+                                   p10=c.iloc[0][9], p11=c.iloc[0][10], e1=c.iloc[0][28], e2=c.iloc[0][29],
+                                   e3=c.iloc[0][30],
+                                   e4=c.iloc[0][31], e5=c.iloc[0][32], e6=c.iloc[0][33], e7=c.iloc[0][34],
+                                   e8=c.iloc[0][35],
+                                   e9=c.iloc[0][36], e10=c.iloc[0][37], e11=c.iloc[0][38],
+                                   exploration_trials=exploration_trials, generations_len=generations_len,
+                                   wfa=False, fees=fees)
+        fn_df = data.copy()
+        fn_df = strategy(data=testing_df, p1=c.iloc[0][0], p2=c.iloc[0][1], p3=c.iloc[0][2], p4=c.iloc[0][3],
+                         p5=c.iloc[0][4], p6=c.iloc[0][5], p7=c.iloc[0][6], p8=c.iloc[0][7], p9=c.iloc[0][8],
+                         p10=c.iloc[0][9], p11=c.iloc[0][10],
+                         top_wick_perc=r.iloc[0][11], bot_wick_perc=r.iloc[0][12], body_wick_perc=r.iloc[0][13],
+                         ema1_len=r.iloc[0][14], ema1_cross_delay=r.iloc[0][15], ema2_len=r.iloc[0][16],
+                         cmf_ma_len=r.iloc[0][17],
+                         ema2_cross_delay=r.iloc[0][18], ema1_slope_len=r.iloc[0][19], cmf_len=r.iloc[0][20],
+                         ema1_slope_level=r.iloc[0][21], close_lookback=r.iloc[0][22], cmf_level=r.iloc[0][23],
+                         rsi_len=r.iloc[0][24], rsi_level=r.iloc[0][25], rsi_ma_len=r.iloc[0][26],
+                         vol_ma_len=r.iloc[0][27],
+                         e1=c.iloc[0][28], e2=c.iloc[0][29], e3=c.iloc[0][30],
+                         e4=c.iloc[0][31], e5=c.iloc[0][32], e6=c.iloc[0][33], e7=c.iloc[0][34], e8=c.iloc[0][35],
+                         e9=c.iloc[0][36], e10=c.iloc[0][37], e11=c.iloc[0][38],
+                         top_wick_perc_e=r.iloc[0][39], bot_wick_perc_e=r.iloc[0][40], cmf_len_e=r.iloc[0][41],
+                         body_wick_perc_e=r.iloc[0][42], ema1_len_e=r.iloc[0][43], cmf_level_e=r.iloc[0][44],
+                         ema1_cross_delay_e=r.iloc[0][45], ema2_len_e=r.iloc[0][46], cmf_ma_len_e=r.iloc[0][47],
+                         ema2_cross_delay_e=r.iloc[0][48], ema1_slope_len_e=r.iloc[0][49],
+                         ema1_slope_level_e=r.iloc[0][50], close_lookback_e=r.iloc[0][51],
+                         rsi_len_e=r.iloc[0][52], rsi_level_e=r.iloc[0][53], rsi_ma_len_e=r.iloc[0][54],
+                         vol_ma_len_e=r.iloc[0][55])
+        testing_score = get_score(fn_df, fees=fees)
+        if testing_score >= (r.iloc[0][56] - (r.iloc[0][56] * 0.02)):
+            break
+
+    return r
+
+
+# __GET-DATA__
+df = pd.read_csv('BTCUSDT_5m.csv')
+
+# __Format-Data__
+df.reset_index(drop=True, inplace=True)
+# Change Date column to a date time type
+df.Date = pd.to_datetime(df.Date, format='%Y-%m-%d %H:%M:%S.%f')
+# Change Date column to the index of the data frame
+df.set_index('Date', inplace=True, drop=True)
+# Clean Data
+df = df[df['High'] != df['Low']].copy()
+print(df.shape)
+
+# __FIND_ALPHA__
+a = find_strategy(data=df, exploration_trials=20, generations_len=5, fees=0.001)
+print('APLHA:', a)
