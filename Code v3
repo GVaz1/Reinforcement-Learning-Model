@@ -977,21 +977,21 @@ def find_strategy(data, exploration_trials, generations_len, fees=0.001):
                          p10=c.iloc[0][9], p11=c.iloc[0][10],
                          top_wick_perc=r.iloc[0][11], bot_wick_perc=r.iloc[0][12], body_wick_perc=r.iloc[0][13],
                          ema1_len=r.iloc[0][14], ema1_cross_delay=r.iloc[0][15], ema2_len=r.iloc[0][16],
-                         cmf_ma_len=r.iloc[0][17],
-                         ema2_cross_delay=r.iloc[0][18], ema1_slope_len=r.iloc[0][19], cmf_len=r.iloc[0][20],
-                         ema1_slope_level=r.iloc[0][21], close_lookback=r.iloc[0][22], cmf_level=r.iloc[0][23],
-                         rsi_len=r.iloc[0][24], rsi_level=r.iloc[0][25], rsi_ma_len=r.iloc[0][26],
-                         vol_ma_len=r.iloc[0][27],
+                         cmf_ma_len=r.iloc[0][27],
+                         ema2_cross_delay=r.iloc[0][17], ema1_slope_len=r.iloc[0][18], cmf_len=r.iloc[0][25],
+                         ema1_slope_level=r.iloc[0][19], close_lookback=r.iloc[0][20], cmf_level=r.iloc[0][26],
+                         rsi_len=r.iloc[0][21], rsi_level=r.iloc[0][22], rsi_ma_len=r.iloc[0][23],
+                         vol_ma_len=r.iloc[0][24],
                          e1=c.iloc[0][28], e2=c.iloc[0][29], e3=c.iloc[0][30],
                          e4=c.iloc[0][31], e5=c.iloc[0][32], e6=c.iloc[0][33], e7=c.iloc[0][34], e8=c.iloc[0][35],
                          e9=c.iloc[0][36], e10=c.iloc[0][37], e11=c.iloc[0][38],
-                         top_wick_perc_e=r.iloc[0][39], bot_wick_perc_e=r.iloc[0][40], cmf_len_e=r.iloc[0][41],
-                         body_wick_perc_e=r.iloc[0][42], ema1_len_e=r.iloc[0][43], cmf_level_e=r.iloc[0][44],
-                         ema1_cross_delay_e=r.iloc[0][45], ema2_len_e=r.iloc[0][46], cmf_ma_len_e=r.iloc[0][47],
-                         ema2_cross_delay_e=r.iloc[0][48], ema1_slope_len_e=r.iloc[0][49],
-                         ema1_slope_level_e=r.iloc[0][50], close_lookback_e=r.iloc[0][51],
-                         rsi_len_e=r.iloc[0][52], rsi_level_e=r.iloc[0][53], rsi_ma_len_e=r.iloc[0][54],
-                         vol_ma_len_e=r.iloc[0][55])
+                         top_wick_perc_e=r.iloc[0][39], bot_wick_perc_e=r.iloc[0][40], cmf_len_e=r.iloc[0][53],
+                         body_wick_perc_e=r.iloc[0][41], ema1_len_e=r.iloc[0][42], cmf_level_e=r.iloc[0][54],
+                         ema1_cross_delay_e=r.iloc[0][43], ema2_len_e=r.iloc[0][44], cmf_ma_len_e=r.iloc[0][55],
+                         ema2_cross_delay_e=r.iloc[0][45], ema1_slope_len_e=r.iloc[0][46],
+                         ema1_slope_level_e=r.iloc[0][47], close_lookback_e=r.iloc[0][48],
+                         rsi_len_e=r.iloc[0][49], rsi_level_e=r.iloc[0][50], rsi_ma_len_e=r.iloc[0][51],
+                         vol_ma_len_e=r.iloc[0][52])
         testing_score = get_score(fn_df, fees=fees)
         if testing_score >= (r.iloc[0][56] - (r.iloc[0][56] * 0.02)):
             break
@@ -1014,4 +1014,55 @@ print(df.shape)
 
 # __FIND_ALPHA__
 a = find_strategy(data=df, exploration_trials=20, generations_len=5, fees=0.001)
-print('APLHA:', a)
+print('APLHA:', a.to_string())
+
+# __RUN-RESULTS__
+# training data
+training_df = strategy(df, p1=a.iloc[0][0], p2=a.iloc[0][1], p3=a.iloc[0][2], p4=a.iloc[0][3], p5=a.iloc[0][4],
+                       p6=a.iloc[0][5], p7=a.iloc[0][6], p8=a.iloc[0][7], p9=a.iloc[0][8], p10=a.iloc[0][9],
+                       p11=a.iloc[0][10], top_wick_perc=a.iloc[0][11], bot_wick_perc=a.iloc[0][12],
+                       body_wick_perc=a.iloc[0][13], ema1_len=a.iloc[0][14], ema1_cross_delay=a.iloc[0][15],
+                       ema2_len=a.iloc[0][16], ema2_cross_delay=a.iloc[0][17], ema1_slope_len=a.iloc[0][18],
+                       ema1_slope_level=a.iloc[0][19], close_lookback=a.iloc[0][20], rsi_len=a.iloc[0][21],
+                       rsi_level=a.iloc[0][22], rsi_ma_len=a.iloc[0][23], vol_ma_len=a.iloc[0][24],
+                       cmf_len=a.iloc[0][25], cmf_level=a.iloc[0][26], cmf_ma_len=a.iloc[0][27],
+                       e1=a.iloc[0][28], e2=a.iloc[0][29], e3=a.iloc[0][30], e4=a.iloc[0][31], e5=a.iloc[0][32],
+                       e6=a.iloc[0][33], e7=a.iloc[0][34], e8=a.iloc[0][35], e9=a.iloc[0][36], e10=a.iloc[0][37],
+                       e11=a.iloc[0][38], top_wick_perc_e=a.iloc[0][39], bot_wick_perc_e=a.iloc[0][40],
+                       body_wick_perc_e=a.iloc[0][41], ema1_len_e=a.iloc[0][42], ema1_cross_delay_e=a.iloc[0][43],
+                       ema2_len_e=a.iloc[0][44], ema2_cross_delay_e=a.iloc[0][45], ema1_slope_len_e=a.iloc[0][46],
+                       ema1_slope_level_e=a.iloc[0][47], close_lookback_e=a.iloc[0][48], rsi_len_e=a.iloc[0][49],
+                       rsi_level_e=a.iloc[0][50], rsi_ma_len_e=a.iloc[0][51], vol_ma_len_e=a.iloc[0][52],
+                       cmf_len_e=a.iloc[0][53], cmf_level_e=a.iloc[0][54], cmf_ma_len_e=a.iloc[0][55])
+z = get_score(training_df, fees=0.001)
+
+print('Final Score:', z)
+
+# Plot Data
+fig, ax = plt.subplots(2, figsize=(15, 7), sharex=True, sharey=False)
+
+long_entry = df.loc[(df['Position'] == 1) & (df['Position'].shift(1) == 0)]['Close']
+long_exit = df.loc[(df['Position'] == 0) & (df['Position'].shift(1) == 1)]['Close']
+
+
+ax[0].scatter(long_entry.index, long_entry, c='mediumorchid',
+              s=100, marker='^', label='Long Entry',
+              zorder=10)
+ax[0].scatter(long_exit.index, long_exit, c='mediumorchid',
+              s=100, marker='x', label='Long Exit',
+              zorder=10)
+
+ax[0].plot(df['Close'], color='black', label='Closing Price')
+ax[0].set_title('Total Data')
+ax[0].legend()
+
+ax[1].plot(df['cum_strat_returns'] * 100, label='Strategy Returns')
+ax[1].plot(((df['Close'] / df['Close'].shift(1)) - 1).cumsum() * 100, color='orange', label='Buy and Hold Returns')
+
+
+ax[1].set_ylabel('Returns (%)')
+ax[1].set_title('Equity Charts')
+ax[1].legend()
+
+plt.show()
+
