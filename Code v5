@@ -1,0 +1,526 @@
+import pandas as pd
+import pandas_ta as pa
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Intelligence of model and how it will use input values
+def bound_oscillator_black_box(data, output_signal, indicator: str, p1, ind_level, length, look_back, pct_level):
+    if p1 == 1:
+        output_signal = np.logical_and(output_signal, data[indicator] > ind_level)
+    elif p1 == 2:
+        output_signal = np.logical_and(output_signal, data[indicator] < ind_level)
+    elif p1 == 3:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[title] > ind_level)
+    elif p1 == 4:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[title] < ind_level)
+    elif p1 == 5:
+        output_signal = np.logical_and(output_signal, np.logical_and(data[indicator] > ind_level,
+                                                                     data[indicator].shift(1) < ind_level))
+    elif p1 == 6:
+        output_signal = np.logical_and(output_signal, np.logical_and(data[indicator] < ind_level,
+                                                                     data[indicator].shift(1) > ind_level))
+    elif p1 == 7:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] < ind_level,
+                                                                     data[title].shift(1) > ind_level))
+    elif p1 == 8:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] > ind_level,
+                                                                     data[title].shift(1) < ind_level))
+    elif p1 == 9:
+        output_signal = np.logical_and(output_signal, data[indicator] > data[indicator].shift(look_back))
+    elif p1 == 10:
+        output_signal = np.logical_and(output_signal, data[indicator] < data[indicator].shift(look_back))
+    elif p1 == 11:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[title] < data[title].shift(look_back))
+    elif p1 == 12:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[title] > data[title].shift(look_back))
+    elif p1 == 13:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[indicator] < data[title].shift(look_back))
+    elif p1 == 14:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[indicator] > data[title].shift(look_back))
+    elif p1 == 15:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[indicator].shift(look_back) < data[title])
+    elif p1 == 16:
+        title = indicator + ' MA'
+        data[title] = data[indicator].rolling(window=length).mean()
+        output_signal = np.logical_and(output_signal, data[indicator].shift(look_back) > data[title])
+    elif p1 == 17:
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[indicator] - data[indicator].shift(look_back) > 0,
+                                                      data['Close'] - data['Close'].shift(look_back) < 0))
+    elif p1 == 18:
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[indicator] - data[indicator].shift(look_back) < 0,
+                                                      data['Close'] - data['Close'].shift(look_back) > 0))
+    elif p1 == 19:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal, data[title] > pct_level)
+    elif p1 == 20:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal, data[title] < pct_level)
+    elif p1 == 20:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] < pct_level,
+                                                                     data[title].shift(1) > pct_level))
+    elif p1 == 21:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] > pct_level,
+                                                                     data[title].shift(1) < pct_level))
+    elif p1 == 22:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[title] > (pct_level - (pct_level * 0.05)),
+                                                      data[title].shift(1) < (pct_level + (pct_level * 0.05))))
+    elif p1 == 23:
+        title = indicator + ' Percent Rank'
+        data[title] = data[indicator].rank(pct=True)
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[title] < (pct_level - (pct_level * 0.05)),
+                                                      data[title].shift(1) > (pct_level + (pct_level * 0.05))))
+    elif p1 == 24:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal, data[title] > pct_level)
+    elif p1 == 25:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal, data[title] < pct_level)
+    elif p1 == 26:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] < pct_level,
+                                                                     data[title].shift(1) > pct_level))
+    elif p1 == 27:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal, np.logical_and(data[title] > pct_level,
+                                                                     data[title].shift(1) < pct_level))
+    elif p1 == 28:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[title] > (pct_level - (pct_level * 0.05)),
+                                                      data[title].shift(1) < (pct_level + (pct_level * 0.05))))
+    elif p1 == 29:
+        title2 = indicator + ' MA'
+        data[title2] = data[indicator].rolling(window=length).mean()
+        title = indicator + ' Percent Rank'
+        data[title] = data[title2].rank(pct=True)
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[title] < (pct_level - (pct_level * 0.05)),
+                                                      data[title].shift(1) > (pct_level + (pct_level * 0.05))))
+    elif p1 == 30:
+        output_signal = np.logical_and(output_signal, data[indicator] > data[indicator].rolling(window=look_back).max())
+    elif p1 == 31:
+        output_signal = np.logical_and(output_signal, data[indicator] < data[indicator].rolling(window=look_back).max())
+    elif p1 == 32:
+        output_signal = np.logical_and(output_signal, data[indicator] > data[indicator].rolling(window=look_back).min())
+    elif p1 == 33:
+        output_signal = np.logical_and(output_signal, data[indicator] < data[indicator].rolling(window=look_back).min())
+    elif p1 == 34:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLU'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] + 2 * data[title1]
+        output_signal = np.logical_and(output_signal, data[indicator] > data[title3])
+    elif p1 == 35:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLU'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] + 2 * data[title1]
+        output_signal = np.logical_and(output_signal, data[indicator] < data[title3])
+    elif p1 == 36:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLU'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] + 2 * data[title1]
+        output_signal = np.logical_and(output_signal, np.logical_and(data[indicator] > data[title3],
+                                                                     data[indicator].shift(1) < data[title3].shift(1)))
+    elif p1 == 37:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLU'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] + 2 * data[title1]
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[indicator] < data[title3],
+                                                      data[indicator].shift(1) > data[title3].shift(1)))
+    elif p1 == 38:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLD'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] - 2 * data[title1]
+        output_signal = np.logical_and(output_signal, data[indicator] > data[title3])
+    elif p1 == 39:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLD'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] - 2 * data[title1]
+        output_signal = np.logical_and(output_signal, data[indicator] < data[title3])
+    elif p1 == 40:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLD'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] - 2 * data[title1]
+        output_signal = np.logical_and(output_signal, np.logical_and(data[indicator] > data[title3],
+                                                                     data[indicator].shift(1) < data[title3].shift(
+                                                                         1)))
+    elif p1 == 41:
+        title1 = indicator + 'std'
+        title2 = indicator + 'MA'
+        title3 = indicator + 'BOLD'
+        data[title1] = data[indicator].rolling(look_back).std(ddof=0)
+        data[title2] = data[indicator].rolling(length).mean()
+        data[title3] = data[title2] - 2 * data[title1]
+        output_signal = np.logical_and(output_signal,
+                                       np.logical_and(data[indicator] < data[title3],
+                                                      data[indicator].shift(1) > data[title3].shift(1)))
+    return output_signal
+
+
+def intelligence(data, parameters_array: list):
+    # List_Order
+    #  ind1_len, p1, ind_level_1, length_1, look_back_1, pct_level_1, ind2_len, ind2_sig_len, p2, ind_level_2,
+    #   0        1       2            3         4           5             6           7        8       9
+    # length_2, look_back_2, pct_level_2, ind3_len, p3, ind_level_3, length_3, look_back_3, pct_level_3
+    #    10        11          12            13     14      15         16        17           18
+    output_signal = 1 > 0
+
+    if parameters_array[1] != 0:
+        data['RSI'] = pa.rsi(close=data['Close'], length=parameters_array[0])
+        output_signal = bound_oscillator_black_box(data=data, output_signal=output_signal, indicator='RSI',
+                                                   p1=parameters_array[1], ind_level=parameters_array[2],
+                                                   length=parameters_array[3], look_back=parameters_array[4],
+                                                   pct_level=parameters_array[5])
+    if parameters_array[8] != 0:
+        adx = pa.adx(high=data['High'], low=data['Low'], close=data['Close'], length=parameters_array[6],
+                     lensig=parameters_array[7])
+        adx = adx.iloc[:, 0:1]
+        adx.columns = ['ADX']
+        data['ADX'] = adx['ADX']
+        output_signal = bound_oscillator_black_box(data=data, output_signal=output_signal, indicator='ADX',
+                                                   p1=parameters_array[8], ind_level=parameters_array[9],
+                                                   length=parameters_array[10], look_back=parameters_array[11],
+                                                   pct_level=parameters_array[12])
+    if parameters_array[14] != 0:
+        data['CMF'] = pa.cmf(high=data['High'], low=data['Low'], close=data['Close'], volume=data['Volume'],
+                             open=data['Open'], length=parameters_array[13])
+        output_signal = bound_oscillator_black_box(data=data, output_signal=output_signal, indicator='CMF',
+                                                   p1=parameters_array[14], ind_level=parameters_array[15],
+                                                   length=parameters_array[16], look_back=parameters_array[17],
+                                                   pct_level=parameters_array[18])
+    return output_signal
+
+
+# Strategy function
+def strategy(data, buy_long_p_array, sell_long_p_array, buy_short_p_array, sell_short_p_array):
+    buy_long = intelligence(data=data, parameters_array=buy_long_p_array)
+    sell_long = intelligence(data=data, parameters_array=sell_long_p_array)
+
+    buy_short = intelligence(data=data, parameters_array=buy_short_p_array)
+    sell_short = intelligence(data=data, parameters_array=sell_short_p_array)
+
+    # run strategy
+    data['Position'] = np.nan
+    data['Position'] = np.where(buy_long, 1, data['Position'])
+    data['Position'] = np.where(sell_long, 0, data['Position'])
+    data['Position'] = np.where(buy_short, -1, data['Position'])
+    data['Position'] = np.where(sell_short, 0, data['Position'])
+    data['Position'] = data['Position'].ffill().fillna(0)
+    return data
+
+
+# reward function
+def get_score(data, fees=0.001):
+    # make a column that equals the fee paid for entering and exiting trades when a trade is opened and closed
+    data['Entry'] = np.where(np.logical_and(data['Position'] == 1, data['Position'].shift(1) == 0), 1, 0)
+    data['Entry'] = np.where(np.logical_and(data['Position'] == -1, data['Position'].shift(1) == 0), 1, 0)
+    data['Exit'] = np.where(np.logical_and(data['Position'] == 0, data['Position'].shift(1) == 1), 1, 0)
+    data['Exit'] = np.where(np.logical_and(data['Position'] == 0, data['Position'].shift(1) == -1), 1, 0)
+    data['Entry_Fees'] = fees * data['Entry']
+    data['Exit_Fees'] = fees * data['Exit']
+
+    # get returns of the asset
+    data['returns'] = (data['Close'] / data['Close'].shift(1)) - 1
+
+    # get the returns of the strategy
+    data['strat_returns'] = (data['Position'].shift(1) * data['returns']) - data['Entry_Fees'] - data['Exit_Fees']
+    data['cum_strat_returns'] = data['strat_returns'].cumsum()
+
+    # Max Drawdown
+    cum_returns = data['strat_returns'].cumsum() - 1
+    peak = cum_returns.cummax()
+    drawdown = peak - cum_returns
+    data['max_drawdown'] = drawdown.max()
+
+    # Optimization Score
+    data['score'] = (data['strat_returns'].sum() / len(data)) / data['max_drawdown']
+
+    if data['Exit'].sum() < 2 or data['strat_returns'].sum() < 0 or data['strat_returns'].sum() < data['returns'].sum():
+        data['score'] = -100
+
+    data['score'] = data['score'].ffill().fillna(-100)
+    strategy_score = data.iloc[0]['score']
+    return strategy_score
+
+
+# helper function
+def change_parameters(p_list):
+    runs = np.random.randint(low=1, high=round(19 * 0.5))
+    pool = []
+    for j in range(19):
+        pool.append(1 + j)
+    for x in range(runs):
+        param = pool.pop(np.random.randint(low=0, high=len(pool) - 1))
+        if param == 1:
+            p_list[0] = np.random.randint(low=2, high=301)
+        elif param == 2:
+            p_list[1] = np.random.randint(low=0, high=42)
+        elif param == 3:
+            p_list[2] = np.random.randint(low=1, high=100)
+        elif param == 4:
+            p_list[3] = np.random.randint(low=2, high=301)
+        elif param == 5:
+            p_list[4] = np.random.randint(low=0, high=301)
+        elif param == 6:
+            p_list[5] = np.random.randint(low=0, high=51)
+        elif param == 7:
+            p_list[6] = np.random.randint(low=2, high=301)
+        elif param == 8:
+            p_list[7] = np.random.randint(low=2, high=301)
+        elif param == 9:
+            p_list[8] = np.random.randint(low=0, high=42)
+        elif param == 10:
+            p_list[9] = np.random.randint(low=1, high=100)
+        elif param == 11:
+            p_list[10] = np.random.randint(low=2, high=301)
+        elif param == 12:
+            p_list[11] = np.random.randint(low=0, high=301)
+        elif param == 13:
+            p_list[12] = np.random.randint(low=0, high=50)
+        elif param == 14:
+            p_list[13] = np.random.randint(low=2, high=301)
+        elif param == 15:
+            p_list[14] = np.random.randint(low=0, high=42)
+        elif param == 16:
+            p_list[15] = np.random.randint(low=-50, high=51)
+        elif param == 17:
+            p_list[16] = np.random.randint(low=2, high=301)
+        elif param == 18:
+            p_list[17] = np.random.randint(low=2, high=301)
+        elif param == 19:
+            p_list[18] = np.random.randint(low=0, high=51)
+        return p_list
+
+
+# Optimization Function
+def optimize(data, test_data, fees=0.001, exploration_trials=100, generations_len=1):
+    # initial exploration
+    generation = pd.DataFrame()
+    p_buy_l = []
+    p_sell_l = []
+    p_buy_s = []
+    p_sell_s = []
+    for i in range(exploration_trials):
+        p_buy_l = np.random.randint(low=[2, 0, 1, 2, 0, 0, 2, 2, 0, 1, 2, 0, 0, 2, 0, -50, 2, 2, 0],
+                                    high=[301, 42, 100, 301, 301, 51, 301, 301, 42, 100, 301, 301, 50, 301, 42, 51,
+                                          301, 301, 51])
+        p_buy_l[5] = p_buy_l[5] / 50
+        p_buy_l[12] = p_buy_l[12] / 50
+        p_buy_l[15] = p_buy_l[15] / 50
+        p_buy_l[18] = p_buy_l[18] / 50
+        p_sell_l = np.random.randint(low=[2, 0, 1, 2, 0, 0, 2, 2, 0, 1, 2, 0, 0, 2, 0, -50, 2, 2, 0],
+                                     high=[301, 42, 100, 301, 301, 51, 301, 301, 42, 100, 301, 301, 50, 301, 42, 51,
+                                           301,
+                                           301, 51])
+        p_sell_l[5] = p_sell_l[5] / 50
+        p_sell_l[12] = p_sell_l[12] / 50
+        p_sell_l[15] = p_sell_l[15] / 50
+        p_sell_l[18] = p_sell_l[18] / 50
+        p_buy_s = np.random.randint(low=[2, 0, 1, 2, 0, 0, 2, 2, 0, 1, 2, 0, 0, 2, 0, -50, 2, 2, 0],
+                                    high=[301, 42, 100, 301, 301, 51, 301, 301, 42, 100, 301, 301, 50, 301, 42, 51,
+                                          301, 301, 51])
+        p_buy_s[5] = p_buy_s[5] / 50
+        p_buy_s[12] = p_buy_s[12] / 50
+        p_buy_s[15] = p_buy_s[15] / 50
+        p_buy_s[18] = p_buy_s[18] / 50
+        p_sell_s = np.random.randint(low=[2, 0, 1, 2, 0, 0, 2, 2, 0, 1, 2, 0, 0, 2, 0, -50, 2, 2, 0],
+                                     high=[301, 42, 100, 301, 301, 51, 301, 301, 42, 100, 301, 301, 50, 301, 42, 51,
+                                           301, 301, 51])
+        p_sell_s[5] = p_sell_s[5] / 50
+        p_sell_s[12] = p_sell_s[12] / 50
+        p_sell_s[15] = p_sell_s[15] / 50
+        p_sell_s[18] = p_sell_s[18] / 50
+
+        in_df = data.copy()
+        in_df = strategy(data=in_df, buy_long_p_array=p_buy_l, sell_long_p_array=p_sell_l, buy_short_p_array=p_buy_s,
+                         sell_short_p_array=p_sell_s)
+        strategy_score_1 = get_score(in_df, fees=fees)
+        fn_df = test_data.copy()
+        fn_df = strategy(data=fn_df, buy_long_p_array=p_buy_l, sell_long_p_array=p_sell_l, buy_short_p_array=p_buy_s,
+                         sell_short_p_array=p_sell_s)
+        strategy_score_2 = get_score(fn_df, fees=fees)
+        if strategy_score_2 < (strategy_score_1 - (strategy_score_1 * 0.02)):
+            strategy_score_1 = -100
+        parameters = np.concatenate((p_buy_l, p_sell_l, p_buy_s, p_sell_s))
+        parameters = np.append(parameters, strategy_score_1)
+        opt1 = 'Opt. ' + str(i + 1)
+        generation[opt1] = parameters
+    print('Exploration Results:', '\n', generation.T)
+    # Drop worst 50% of strategies based off score
+    generation = generation.T
+    generation = generation.drop(generation.nsmallest(round(len(generation) / 2), columns=[76]).index)
+    # modify survivors and kill worst 50%
+    for i in range(generations_len):
+        new_generation = pd.DataFrame()
+        for o in range(len(generation)):
+            p_buy_l = change_parameters(p_buy_l)
+            p_sell_l = change_parameters(p_sell_l)
+            p_buy_s = change_parameters(p_buy_s)
+            p_sell_s = change_parameters(p_sell_s)
+
+            in_df = data.copy()
+            in_df = strategy(data=in_df, buy_long_p_array=p_buy_l, sell_long_p_array=p_sell_l,
+                             buy_short_p_array=p_buy_s,
+                             sell_short_p_array=p_sell_s)
+            strategy_score_1 = get_score(in_df, fees=fees)
+            fn_df = test_data.copy()
+            fn_df = strategy(data=fn_df, buy_long_p_array=p_buy_l, sell_long_p_array=p_sell_l,
+                             buy_short_p_array=p_buy_s,
+                             sell_short_p_array=p_sell_s)
+            strategy_score_2 = get_score(fn_df, fees=fees)
+            if strategy_score_2 < (strategy_score_1 - (strategy_score_1 * 0.02)):
+                strategy_score_1 = -100
+            parameters = np.concatenate((p_buy_l, p_sell_l, p_buy_s, p_sell_s))
+            parameters = np.append(parameters, strategy_score_1)
+            opt1 = 'Opt. wf' + str(i + 1) + str(o + 1)
+            new_generation[opt1] = parameters
+        new_generation = new_generation.T
+        generation = pd.concat([generation, new_generation])
+        print('\n', 'Generation:', str(i + 1), '\n', generation.to_string())
+
+        # kill bottom 50%
+        generation = generation.drop(generation.nsmallest(round(len(generation) / 2), columns=[76]).index)
+
+        # kill all but best traders
+    generation = generation.drop(generation.nsmallest(round(len(generation)) - 1, columns=[76]).index)
+    return generation
+
+
+# __GET-DATA__
+df = pd.read_csv('BTCUSDT_5m.csv')
+
+# __Format-Data__
+df.reset_index(drop=True, inplace=True)
+# Change Date column to a date time type
+df.Date = pd.to_datetime(df.Date, format='%Y-%m-%d %H:%M:%S.%f')
+# Change Date column to the index of the data frame
+df.set_index('Date', inplace=True, drop=True)
+# Clean Data
+df = df[df['High'] != df['Low']].copy()
+
+
+# __SPLIT-DATA__
+# first 70% of data for training, last 30% of data for testing
+training_df = df.iloc[0:round(len(df.index) * 0.6), ].copy()
+testing_df = df.iloc[round(len(df.index) * 0.6):round(len(df.index) * 0.8), ].copy()
+phack_df = df.iloc[round(len(df.index) * 0.8):len(df.index), ].copy()
+
+
+while 1 > 0:
+    c = optimize(data=training_df, test_data=testing_df, exploration_trials=200, generations_len=100)
+    print('Results: ', c.to_string())
+    if c.iloc[0][76] > -100:
+        break
+    print('Results are under trained. Starting optimization again.')
+
+
+# __Run-Strategy-for-Plot__
+train = training_df.copy()
+test = testing_df.copy()
+verify = phack_df.copy()
+
+buy_l = []
+sell_l = []
+buy_s = []
+sel_s = []
+
+for z in range(19):
+    buy_l.append(int(c.iloc[0][0+z]))
+    sell_l.append(int(c.iloc[0][19+z]))
+    buy_s.append(int(c.iloc[0][38+z]))
+    sel_s.append(int(c.iloc[0][57+z]))
+
+train = strategy(data=train, buy_long_p_array=buy_l, sell_long_p_array=sell_l, buy_short_p_array=buy_s,
+                 sell_short_p_array=sel_s)
+test = strategy(data=test, buy_long_p_array=buy_l, sell_long_p_array=sell_l, buy_short_p_array=buy_s,
+                sell_short_p_array=sel_s)
+verify = strategy(data=verify, buy_long_p_array=buy_l, sell_long_p_array=sell_l, buy_short_p_array=buy_s,
+                  sell_short_p_array=sel_s)
+
+z = get_score(train)
+y = get_score(test)
+x = get_score(verify)
+
+# Plot Data
+fig, ax = plt.subplots(4, figsize=(15, 7), sharex=False, sharey=False)
+ax[0].plot(((df['Close'] / df['Close'].shift(1)) - 1).cumsum() * 100, color='orange', label='Buy and Hold Returns')
+ax[1].plot(train['strat_returns'].cumsum() * 100, label='Training Returns')
+ax[1].plot(((train['Close'] / train['Close'].shift(1)) - 1).cumsum() * 100, label='Buy and Hold Returns')
+ax[1].legend()
+ax[2].plot(test['strat_returns'].cumsum() * 100, label='Testing Returns')
+ax[2].plot(((test['Close'] / test['Close'].shift(1)) - 1).cumsum() * 100, label='Buy and Hold Returns')
+ax[2].legend()
+ax[3].plot(verify['strat_returns'].cumsum() * 100, label='PHack Verification')
+ax[3].plot(((verify['Close'] / verify['Close'].shift(1)) - 1).cumsum() * 100, label='Buy and Hold Returns')
+ax[3].legend()
+
+plt.show()
+
+
